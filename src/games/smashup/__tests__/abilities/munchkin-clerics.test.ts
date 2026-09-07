@@ -1,5 +1,7 @@
 import { beforeAll, describe, expect, it } from 'vitest';
 import { initAllAbilities, resetAbilityInit } from '../../abilities';
+import { createInitialSystemState } from '../../../../engine/pipeline';
+import { GameTestRunner } from '../../../../engine/testing/GameTestRunner';
 import { clearRegistry } from '../../domain/abilityRegistry';
 import { clearBaseAbilityRegistry } from '../../domain/baseAbilities';
 import { clearInteractionHandlers } from '../../domain/abilityInteractionHandlers';
@@ -7,9 +9,13 @@ import { clearOngoingEffectRegistry } from '../../domain/ongoingEffects';
 import { clearPowerModifierRegistry } from '../../domain/ongoingModifiers';
 import { fireTriggers } from '../../domain/ongoingEffects';
 import { postProcessSystemEvents } from '../../domain';
-import { SU_EVENTS, type AbilityTag, type SmashUpCore } from '../../domain/types';
+import { getSmashUpReactionSession } from '../../domain/reactionSession';
+import { SU_EVENTS, type AbilityTag, type SmashUpCommand, type SmashUpCore, type SmashUpEvent } from '../../domain/types';
+import { SmashUpDomain, smashUpSystemsForTest } from '../../game';
 import {
     applyEvents,
+    getOptionalSimpleChoicePrompt,
+    getPromptOptions,
     getSimpleChoicePrompt,
     invokeRegisteredAbilityContract,
     makeBase,
@@ -49,6 +55,87 @@ function invoke(core: SmashUpCore, defId: string, tag: AbilityTag, cardUid: stri
         random: defaultTestRandom,
         now: 100,
     });
+}
+
+function createClericsScoringRunner(): GameTestRunner<SmashUpCore, SmashUpCommand, SmashUpEvent> {
+    return new GameTestRunner<SmashUpCore, SmashUpCommand, SmashUpEvent>({
+        domain: SmashUpDomain,
+        systems: smashUpSystemsForTest,
+        playerIds: ['0', '1'],
+        random: defaultTestRandom,
+        setup: (ids, random) => {
+            const core = SmashUpDomain.setup(ids, random);
+            const sys = createInitialSystemState(ids, smashUpSystemsForTest, undefined);
+            core.factionSelection = undefined;
+            core.currentPlayerIndex = 0;
+            core.turnOrder = ['0', '1'];
+            core.seatOrder = ['0', '1'];
+            core.turnNumber = 43;
+            core.nextUid = 4300;
+            core.enabledExpansions = ['munchkin'];
+            core.players = {
+                '0': makePlayer('0', {
+                    vp: 4,
+                    factions: ['munchkin_clerics', 'munchkin_warriors'],
+                    hand: [],
+                    deck: [
+                        makeCard('draw-a', 'munchkin_clerics_cardinal', 'minion', '0'),
+                        makeCard('draw-b', 'munchkin_clerics_cardinal', 'minion', '0'),
+                    ],
+                    discard: [],
+                    minionsPlayed: 2,
+                    minionLimit: 2,
+                }),
+                '1': makePlayer('1', {
+                    vp: 5,
+                    factions: ['munchkin_orcs', 'ninjas'],
+                    hand: [],
+                    deck: [],
+                    discard: [],
+                }),
+            };
+            core.bases = [
+                makeBase('base_the_homeworld', [
+                    makeMinion('friar', 'munchkin_clerics_deep_friar', '0', 4),
+                    makeMinion('move-me', 'alien_invader', '0', 19),
+                ]),
+                makeBase('base_the_mothership'),
+            ];
+            core.baseDeck = ['base_the_jungle'];
+            core.baseDiscard = [];
+            sys.phase = 'playCards';
+            return { core, sys };
+        },
+    });
+}
+
+function resolvePromptBy(
+    runner: GameTestRunner<SmashUpCore, SmashUpCommand, SmashUpEvent>,
+    playerId: string,
+    sourceId: string,
+    predicate: (option: any) => boolean,
+    description: string,
+) {
+    const prompt = getSimpleChoicePrompt(runner.getState(), sourceId);
+    const option = getPromptOptions(prompt).find(predicate);
+    expect(option?.id, description).toBeTruthy();
+    const result = runner.resolveInteraction(playerId, { optionId: option!.id });
+    expect(result.success).toBe(true);
+    return result;
+}
+
+function drainScoringUntilIdle(
+    runner: GameTestRunner<SmashUpCore, SmashUpCommand, SmashUpEvent>,
+    eventLog: SmashUpEvent[],
+) {
+    for (let guard = 0; guard < 8; guard += 1) {
+        const state = runner.getState();
+        if (getOptionalSimpleChoicePrompt(state)) return;
+        if (state.sys.phase !== 'scoreBases') return;
+        const result = runner.dispatch('ADVANCE_PHASE', { playerId: '0' });
+        expect(result.success).toBe(true);
+        eventLog.push(...result.events as SmashUpEvent[]);
+    }
 }
 
 describe('萌奇金牧师派系', () => {
@@ -123,6 +210,53 @@ describe('萌奇金牧师派系', () => {
         expect(resolved.success).toBe(true);
         expect(resolved.finalState.core.bases[0].minions.map(minion => minion.uid)).toEqual(['friar']);
         expect(resolved.finalState.core.bases[1].minions.map(minion => minion.uid)).toEqual(['move-me']);
+    });
+
+    it('资深修士在完整计分响应窗口中移动的仆从不会被后续清场弃置', () => {
+        const runner = createClericsScoringRunner();
+        const eventLog: SmashUpEvent[] = [];
+
+        const advance = runner.dispatch('ADVANCE_PHASE', { playerId: '0' });
+        expect(advance.success).toBe(true);
+        eventLog.push(...advance.events as SmashUpEvent[]);
+        expect(runner.getState().sys.phase).toBe('scoreBases');
+        expect(getSmashUpReactionSession(runner.getState())?.responseWindowType).toBe('afterScoring');
+
+        eventLog.push(...resolvePromptBy(
+            runner,
+            '0',
+            'smashup_reaction_choose',
+            option => option.value?.kind === 'activate_special'
+                && option.value?.minionUid === 'friar'
+                && option.value?.baseIndex === 0,
+            '计分后响应窗口应提供资深修士特殊能力',
+        ).events as SmashUpEvent[]);
+        eventLog.push(...resolvePromptBy(
+            runner,
+            '0',
+            'munchkin_clerics_deep_friar_minion',
+            option => option.value?.minionUid === 'move-me',
+            '资深修士第一步应选择同基地另一个己方仆从',
+        ).events as SmashUpEvent[]);
+        const chooseBase = resolvePromptBy(
+            runner,
+            '0',
+            'munchkin_clerics_deep_friar_base',
+            option => option.value?.baseIndex === 1,
+            '资深修士第二步应选择另一个基地',
+        );
+        eventLog.push(...chooseBase.events as SmashUpEvent[]);
+
+        drainScoringUntilIdle(runner, eventLog);
+
+        const finalState = runner.getState();
+        expect(eventLog.map(event => event.type)).toContain(SU_EVENTS.MINION_MOVED);
+        expect(eventLog.map(event => event.type)).toContain(SU_EVENTS.BASE_CLEARED);
+        expect(finalState.core.bases[0].minions.map(minion => minion.uid)).toEqual([]);
+        expect(finalState.core.bases[0].defId).toBe('base_the_jungle');
+        expect(finalState.core.bases[1].minions.map(minion => minion.uid)).toEqual(['move-me']);
+        expect(finalState.core.players['0'].discard.map(card => card.uid)).toContain('friar');
+        expect(finalState.core.players['0'].discard.map(card => card.uid)).not.toContain('move-me');
     });
 
     it('特纳在两个合法模式都存在时必须先手动选择模式，再手动选择亡灵怪物', () => {

@@ -16,6 +16,11 @@ import type {
 } from "./game";
 import type { BetrayalAttackLineOfSightSegment } from "./attackLineOfSightPresentation";
 import { BetrayalAttackLineOfSightOverlay } from "./attackLineOfSightSurface";
+import {
+  resolveAttackImpactByPlayerId,
+  type BetrayalAttackImpactState,
+} from "./attackImpactPresentation";
+import { getAllExplorers } from "./explorerReadModel";
 import type { BetrayalHauntTokenInstanceSummary } from "./hauntTokenModel";
 import type { BetrayalRoomTileVisual } from "./roomAtlas";
 import { resolveBetrayalRoomNodeTileVisual } from "./roomAtlas";
@@ -157,12 +162,7 @@ export interface BetrayalRoomMapSurfaceProps {
     monsterId: string,
     playerId: string,
   ) => EntityRelation | undefined;
-  renderAttackImpactSurface: (
-    playerId: string,
-    surface: string,
-    children: React.ReactNode,
-    density?: "token" | "panel",
-  ) => React.ReactNode;
+  attackImpactPresentationKey: string | null;
   pendingRoomPlacementFailureText: string | null;
   selectedRoomOrientationOption: RoomPlacementOrientationOption | null;
   selectedRoomOrientationTurns: number;
@@ -289,7 +289,7 @@ export function BetrayalRoomMapSurface({
   selectedPeekabooSameRoomMonsterId,
   monsterStatusById,
   resolveMonsterRelationToExplorer,
-  renderAttackImpactSurface,
+  attackImpactPresentationKey,
   pendingRoomPlacementFailureText,
   selectedRoomOrientationOption,
   selectedRoomOrientationTurns,
@@ -330,6 +330,13 @@ export function BetrayalRoomMapSurface({
   onSelectFloor,
 }: BetrayalRoomMapSurfaceProps) {
   const { t } = useTranslation("game-betrayal");
+  const attackImpactByPlayerId = React.useMemo(
+    () =>
+      attackImpactPresentationKey
+        ? resolveAttackImpactByPlayerId(core, getAllExplorers(core))
+        : new Map<string, BetrayalAttackImpactState>(),
+    [attackImpactPresentationKey, core],
+  );
 
   return (
     <div className="relative min-h-0 flex-1">
@@ -863,7 +870,8 @@ export function BetrayalRoomMapSurface({
                 locale={locale}
                 matchData={matchData}
                 resolveMonsterRelationToExplorer={resolveMonsterRelationToExplorer}
-                renderAttackImpactSurface={renderAttackImpactSurface}
+                attackImpactPresentationKey={attackImpactPresentationKey}
+                attackImpactByPlayerId={attackImpactByPlayerId}
                 onSelectExplorerTarget={onSelectExplorerTarget}
                 onOpenExplorerDetails={onOpenExplorerDetails}
                 onSelectMonsterTarget={onSelectMonsterTarget}

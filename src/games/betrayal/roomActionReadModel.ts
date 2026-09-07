@@ -1,6 +1,7 @@
 import type { BetrayalCore } from './game';
 
 type BetrayalRoomEnterEffect = 'mysticElevator';
+type BetrayalRoomActionText = (key: string, options?: Record<string, unknown>) => string;
 
 export interface BetrayalRoomSpecialActionStatus {
     sourceKind: 'roomEffect';
@@ -51,4 +52,38 @@ export function resolveBetrayalRoomSpecialActionStatus(core: BetrayalCore): Betr
         turnEndedByDiscovery,
         reason,
     };
+}
+
+export function resolveBetrayalRoomEffectActionPresentation(
+    status: BetrayalRoomSpecialActionStatus,
+    t: BetrayalRoomActionText,
+): {
+    canUse: boolean;
+    shouldShowAction: boolean;
+    disabledReason: string | null;
+} {
+    return {
+        canUse: status.canUse,
+        shouldShowAction: status.availableInCurrentRoom,
+        disabledReason: resolveBetrayalRoomEffectDisabledReason(status, t),
+    };
+}
+
+function resolveBetrayalRoomEffectDisabledReason(
+    status: BetrayalRoomSpecialActionStatus,
+    t: BetrayalRoomActionText,
+): string | null {
+    if (status.canUse) {
+        return null;
+    }
+    if (!status.phaseEligible) {
+        return t('board.status.roomEffectWrongPhase');
+    }
+    if (status.turnEndedByDiscovery) {
+        return t('board.status.roomEffectDiscoveryEnded');
+    }
+    if (status.usedThisTurn) {
+        return t('board.status.roomEffectUsedThisTurn');
+    }
+    return t('board.status.roomEffectUnavailable');
 }

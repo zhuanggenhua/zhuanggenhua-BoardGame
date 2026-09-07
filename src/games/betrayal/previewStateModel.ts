@@ -4,7 +4,19 @@ import type {
   BetrayalRoomTileAdjustmentSelection,
   BetrayalTraitKey,
 } from "./game";
-import { canUseHolySymbolForDiscovery } from "./possessionActionReadModel";
+import { resolveMoveTargetRooms } from "./movementReadModel";
+import {
+  canUseHolySymbolForDiscovery,
+  canUseSkeletonKeyForMove,
+} from "./possessionActionReadModel";
+import {
+  canUseDogForTrade,
+  resolveDogTradeTargets,
+  resolveSelectedDogTradeCardIds,
+  resolveSelectedTradeGiveCardIds,
+  resolveSelectedTradeTargetPlayerId,
+  resolveTradeTargets,
+} from "./trade";
 import {
   resolveRoomPlacementPreview,
   resolveRoomTileAdjustmentOptions,
@@ -172,6 +184,124 @@ export function resolvePreservedExplorePlacementState(
     pendingRoomOrientationTurns: orientationTurns,
     pendingRoomTileAdjustment: tileAdjustmentOption
       ? toRoomTileAdjustmentSelection(tileAdjustmentOption)
-      : null,
+    : null,
+  };
+}
+
+export function resolveNextPreviewStateAfterCoreChange(
+  core: BetrayalCore,
+  previousState: PreviewState,
+): PreviewState {
+  const nextInitialState = createInitialPreviewState(core);
+  const hasActiveTradeDraft =
+    previousState.tradeSelectionTouched ||
+    previousState.selectedTradeTargetPlayerId !== null ||
+    previousState.selectedTradeGiveCardIds.length > 0 ||
+    previousState.selectedDogTradeCardIds.length > 0 ||
+    previousState.selectedTradeReturnCardIds.length > 0;
+  if (core.recommendedAction === "trade" || hasActiveTradeDraft) {
+    if (
+      core.pendingTradeAgreement ||
+      core.tradeUsedThisTurnPlayerIds.includes(core.currentExplorer.playerId)
+    ) {
+      return nextInitialState;
+    }
+    const tradeTargets = resolveTradeTargets(core);
+    const canUseDogTrade = canUseDogForTrade(core);
+    const dogTradeTargets = canUseDogTrade ? resolveDogTradeTargets(core) : [];
+    const activeTradeTargets =
+      canUseDogTrade && dogTradeTargets.length > 0
+        ? dogTradeTargets
+        : tradeTargets;
+    const nextSelectedTradeTargetPlayerId =
+      resolveSelectedTradeTargetPlayerId(
+        activeTradeTargets,
+        previousState.selectedTradeTargetPlayerId,
+      );
+    const nextSelectedTradeTarget =
+      activeTradeTargets.find(
+        (explorer) => explorer.playerId === nextSelectedTradeTargetPlayerId,
+      ) ?? null;
+    const usedCardIds = new Set(core.usedCardIdsThisTurn);
+    const nextSelectedTradeGiveCardIds = resolveSelectedTradeGiveCardIds(
+      core.currentExplorerInventory,
+      previousState.selectedTradeGiveCardIds,
+      core.usedCardIdsThisTurn,
+    );
+    const nextSelectedDogTradeCardIds = resolveSelectedDogTradeCardIds(
+      core.currentExplorerInventory,
+      previousState.selectedDogTradeCardIds,
+    ).filter((cardId) => !usedCardIds.has(cardId));
+    const nextTargetInventoryIds = new Set(
+      nextSelectedTradeTarget?.inventory.map((card) => card.id) ?? [],
+    );
+    const nextSelectedTradeReturnCardIds =
+      nextSelectedTradeTarget === null
+        ? []
+        : previousState.selectedTradeReturnCardIds.filter(
+            (cardId) =>
+              nextTargetInventoryIds.has(cardId) && !usedCardIds.has(cardId),
+          );
+    return {
+      ...nextInitialState,
+      selectedInventoryCardId: null,
+      selectedTradeTargetPlayerId: nextSelectedTradeTargetPlayerId,
+      selectedTradeGiveCardIds: nextSelectedTradeGiveCardIds,
+      selectedDogTradeCardIds: nextSelectedDogTradeCardIds,
+      selectedTradeReturnCardIds: nextSelectedTradeReturnCardIds,
+      tradeSelectionTouched:
+        previousState.tradeSelectionTouched ||
+        nextSelectedTradeTargetPlayerId !== null ||
+        nextSelectedTradeGiveCardIds.length > 0 ||
+        nextSelectedDogTradeCardIds.length > 0 ||
+        nextSelectedTradeReturnCardIds.length > 0,
+    };
+  }
+  const preservedLastUsedInventoryCardId =
+    previousState.lastUsedInventoryCardId &&
+    core.usedCardIdsThisTurn.includes(previousState.lastUsedInventoryCardId)
+      ? previousState.lastUsedInventoryCardId
+      : null;
+  const preservedExplorePlacementState = resolvePreservedExplorePlacementState(
+    core,
+    previousState,
+  );
+  if (preservedExplorePlacementState) {
+    return {
+      ...nextInitialState,
+      ...preservedExplorePlacementState,
+      lastUsedInventoryCardId: preservedLastUsedInventoryCardId,
+      dismissedLatestDiscoveryKey: previousState.dismissedLatestDiscoveryKey,
+      dismissedRecentRollId: previousState.dismissedRecentRollId,
+    };
+  }
+  const canContinueMoveMode =
+    previousState.interactionMode === "move" &&
+    core.movesRemaining > 0 &&
+    (resolveMoveTargetRooms(core).length > 0 ||
+      core.rooms.some((room) => canUseSkeletonKeyForMove(core, room.id)));
+  const nextInteractionMode = canContinueMoveMode
+    ? "move"
+    : nextInitialState.interactionMode;
+  if (
+    core.currentExplorerInventory.some(
+      (card) => card.id === previousState.selectedInventoryCardId,
+    )
+  ) {
+    return {
+      ...nextInitialState,
+      interactionMode: nextInteractionMode,
+      selectedInventoryCardId: previousState.selectedInventoryCardId,
+      lastUsedInventoryCardId: preservedLastUsedInventoryCardId,
+      dismissedLatestDiscoveryKey: previousState.dismissedLatestDiscoveryKey,
+      dismissedRecentRollId: previousState.dismissedRecentRollId,
+    };
+  }
+  return {
+    ...nextInitialState,
+    interactionMode: nextInteractionMode,
+    lastUsedInventoryCardId: preservedLastUsedInventoryCardId,
+    dismissedLatestDiscoveryKey: previousState.dismissedLatestDiscoveryKey,
+    dismissedRecentRollId: previousState.dismissedRecentRollId,
   };
 }

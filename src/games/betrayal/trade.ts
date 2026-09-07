@@ -372,3 +372,226 @@ export function resolveSelectedTradeGiveCardIds(
         (cardId) => inventoryCardIds.has(cardId) && !usedCardIds.has(cardId),
     );
 }
+
+export interface BetrayalTradeSelectionReadModel {
+    tradeTargets: BetrayalExplorerSummary[];
+    canUseDogTrade: boolean;
+    dogTradeTargets: BetrayalExplorerSummary[];
+    activeTradeTargets: BetrayalExplorerSummary[];
+    selectedTradeTargetPlayerId: string | null;
+    selectedTradeTarget: BetrayalExplorerSummary | null;
+    selectedTradeReturnCardIds: string[];
+    selectedTradeReturnCards: BetrayalInventoryCard[];
+    selectedTradeGiveCardIds: string[];
+    selectedTradeGiveCards: BetrayalInventoryCard[];
+    selectedDogTradeCardIds: string[];
+    selectedDogTradeCards: BetrayalInventoryCard[];
+    selectedNormalTradeGiveCardNames: string;
+    selectedDogTradeCardNames: string;
+    selectedTradeGiveCardNames: string;
+    selectedTradeGiveText: string;
+    selectedTradeReturnText: string;
+    dogTradeFlowActive: boolean;
+    useDogTrade: boolean;
+    tradeSelectionReady: boolean;
+}
+
+export function resolveBetrayalTradeSelectionReadModel({
+    core,
+    selectedTradeTargetPlayerId,
+    selectedTradeReturnCardIds,
+    selectedTradeGiveCardIds,
+    selectedDogTradeCardIds,
+}: {
+    core: BetrayalCore;
+    selectedTradeTargetPlayerId: string | null;
+    selectedTradeReturnCardIds: string[];
+    selectedTradeGiveCardIds: string[];
+    selectedDogTradeCardIds: string[];
+}): BetrayalTradeSelectionReadModel {
+    const tradeTargets = resolveTradeTargets(core);
+    const canUseDogTrade = canUseDogForTrade(core);
+    const dogTradeTargets = resolveDogTradeTargets(core);
+    const activeTradeTargets =
+        canUseDogTrade && dogTradeTargets.length > 0
+            ? dogTradeTargets
+            : tradeTargets;
+    const normalizedTradeTargetPlayerId = resolveSelectedTradeTargetPlayerId(
+        activeTradeTargets,
+        selectedTradeTargetPlayerId,
+    );
+    const selectedTradeTarget =
+        activeTradeTargets.find(
+            (explorer) => explorer.playerId === normalizedTradeTargetPlayerId,
+        ) ?? null;
+    const normalizedTradeReturnCardIds = selectedTradeTarget
+        ? selectedTradeReturnCardIds.filter((cardId) =>
+            selectedTradeTarget.inventory.some((card) => card.id === cardId),
+        )
+        : [];
+    const selectedTradeReturnCards =
+        selectedTradeTarget?.inventory.filter((card) =>
+            normalizedTradeReturnCardIds.includes(card.id),
+        ) ?? [];
+    const normalizedTradeGiveCardIds = resolveSelectedTradeGiveCardIds(
+        core.currentExplorerInventory,
+        selectedTradeGiveCardIds,
+        core.usedCardIdsThisTurn,
+    );
+    const selectedTradeGiveCards = core.currentExplorerInventory.filter(
+        (card) => normalizedTradeGiveCardIds.includes(card.id),
+    );
+    const normalizedDogTradeCardIds = resolveSelectedDogTradeCardIds(
+        core.currentExplorerInventory,
+        selectedDogTradeCardIds,
+    );
+    const selectedDogTradeCards = core.currentExplorerInventory.filter((card) =>
+        normalizedDogTradeCardIds.includes(card.id),
+    );
+    const selectedNormalTradeGiveCardNames = selectedTradeGiveCards
+        .map((card) => card.name)
+        .join('、');
+    const selectedDogTradeCardNames = selectedDogTradeCards
+        .map((card) => card.name)
+        .join('、');
+    const selectedTradeReturnText = selectedTradeReturnCards
+        .map((card) => card.name)
+        .join('、');
+    const dogTradeFlowActive = canUseDogTrade && dogTradeTargets.length > 0;
+    const selectedTargetNeedsDogTrade = Boolean(
+        selectedTradeTarget &&
+        dogTradeTargets.some(
+            (target) => target.playerId === selectedTradeTarget.playerId,
+        ) &&
+        !tradeTargets.some(
+            (target) => target.playerId === selectedTradeTarget.playerId,
+        ),
+    );
+    const useDogTrade =
+        dogTradeFlowActive &&
+        (normalizedDogTradeCardIds.length > 0 ||
+            (selectedTargetNeedsDogTrade &&
+                normalizedTradeReturnCardIds.length > 0));
+    const selectedTradeGiveCardNames = useDogTrade
+        ? selectedDogTradeCardNames
+        : selectedNormalTradeGiveCardNames;
+    const tradeSelectionReady = Boolean(
+        selectedTradeTarget &&
+        (normalizedTradeGiveCardIds.length > 0 ||
+            normalizedDogTradeCardIds.length > 0 ||
+            normalizedTradeReturnCardIds.length > 0),
+    );
+
+    return {
+        tradeTargets,
+        canUseDogTrade,
+        dogTradeTargets,
+        activeTradeTargets,
+        selectedTradeTargetPlayerId: normalizedTradeTargetPlayerId,
+        selectedTradeTarget,
+        selectedTradeReturnCardIds: normalizedTradeReturnCardIds,
+        selectedTradeReturnCards,
+        selectedTradeGiveCardIds: normalizedTradeGiveCardIds,
+        selectedTradeGiveCards,
+        selectedDogTradeCardIds: normalizedDogTradeCardIds,
+        selectedDogTradeCards,
+        selectedNormalTradeGiveCardNames,
+        selectedDogTradeCardNames,
+        selectedTradeGiveCardNames,
+        selectedTradeGiveText: selectedTradeGiveCardNames,
+        selectedTradeReturnText,
+        dogTradeFlowActive,
+        useDogTrade,
+        tradeSelectionReady,
+    };
+}
+
+export interface BetrayalTradeDraftReadModel {
+    hasUsedTradeThisTurn: boolean;
+    hasTradeDraftSelection: boolean;
+    isTradeDraftActive: boolean;
+    isTradeOrLootTargetSelectionActive: boolean;
+    shouldStartDustSicknessExchange: boolean;
+    hasTradeOfferCards: boolean;
+    hasTradeReturnCards: boolean;
+    hasAnyTradeSelectableCards: boolean;
+}
+
+export function resolveBetrayalTradeDraftReadModel({
+    core,
+    selectedTradeTarget,
+    selectedTradeGiveCardIds,
+    selectedDogTradeCardIds,
+    selectedTradeReturnCardIds,
+    activeTradeTargets,
+    tradeSelectionTouched,
+    hasPendingTradeAgreement,
+    hasPendingSicknessExchange,
+    hasPendingMummyReward,
+    hasPendingHelpingHandsReward,
+    isDustSicknessExchangeMode,
+    isDustSicknessExchangeAvailable,
+    hasSelectedCorpseLootTarget,
+}: {
+    core: BetrayalCore;
+    selectedTradeTarget: BetrayalExplorerSummary | null;
+    selectedTradeGiveCardIds: readonly string[];
+    selectedDogTradeCardIds: readonly string[];
+    selectedTradeReturnCardIds: readonly string[];
+    activeTradeTargets: readonly BetrayalExplorerSummary[];
+    tradeSelectionTouched: boolean;
+    hasPendingTradeAgreement: boolean;
+    hasPendingSicknessExchange: boolean;
+    hasPendingMummyReward: boolean;
+    hasPendingHelpingHandsReward: boolean;
+    isDustSicknessExchangeMode: boolean;
+    isDustSicknessExchangeAvailable: boolean;
+    hasSelectedCorpseLootTarget: boolean;
+}): BetrayalTradeDraftReadModel {
+    const hasUsedTradeThisTurn = core.tradeUsedThisTurnPlayerIds.includes(
+        core.currentExplorer.playerId,
+    );
+    const hasTradeDraftSelection =
+        selectedTradeGiveCardIds.length > 0 ||
+        selectedDogTradeCardIds.length > 0 ||
+        selectedTradeReturnCardIds.length > 0 ||
+        hasSelectedCorpseLootTarget;
+    const isTradeDraftActive = Boolean(
+        !hasPendingTradeAgreement &&
+        !hasPendingSicknessExchange &&
+        !hasPendingMummyReward &&
+        !hasPendingHelpingHandsReward &&
+        !isDustSicknessExchangeMode &&
+        !hasSelectedCorpseLootTarget &&
+        !hasUsedTradeThisTurn &&
+        (core.recommendedAction === 'trade' ||
+            tradeSelectionTouched ||
+            Boolean(selectedTradeTarget) ||
+            selectedTradeGiveCardIds.length > 0 ||
+            selectedDogTradeCardIds.length > 0 ||
+            selectedTradeReturnCardIds.length > 0),
+    );
+    const isTradeOrLootTargetSelectionActive =
+        isTradeDraftActive || tradeSelectionTouched || hasSelectedCorpseLootTarget;
+    const shouldStartDustSicknessExchange =
+        isDustSicknessExchangeAvailable && !hasTradeDraftSelection;
+    const hasTradeOfferCards = core.currentExplorerInventory.some(
+        (card) => !core.usedCardIdsThisTurn.includes(card.id),
+    );
+    const hasTradeReturnCards = activeTradeTargets.some((target) =>
+        target.inventory.some(
+            (card) => !core.usedCardIdsThisTurn.includes(card.id),
+        ),
+    );
+
+    return {
+        hasUsedTradeThisTurn,
+        hasTradeDraftSelection,
+        isTradeDraftActive,
+        isTradeOrLootTargetSelectionActive,
+        shouldStartDustSicknessExchange,
+        hasTradeOfferCards,
+        hasTradeReturnCards,
+        hasAnyTradeSelectableCards: hasTradeOfferCards || hasTradeReturnCards,
+    };
+}

@@ -1,6 +1,7 @@
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { resolve } from 'path';
-import { BETRAYAL_COMMANDS, type BetrayalCore } from '../../src/games/betrayal/game';
+import { type BetrayalCore } from '../../src/games/betrayal/game';
+import { BETRAYAL_COMMANDS } from '../../src/games/betrayal/commands';
 import { BETRAYAL_DISCOVERY_POOLS } from '../../src/games/betrayal/scenarioConfig';
 import {
     applyBetrayalCommand,

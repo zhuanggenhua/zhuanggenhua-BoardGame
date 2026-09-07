@@ -1,8 +1,22 @@
 /* @vitest-environment happy-dom */
 import React from 'react';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
-import { describe, expect, it, vi } from 'vitest';
-import type { MatchState, RandomFn } from '../../../engine/types';
+import {
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+  within,
+} from '@testing-library/react';
+import {
+  describe,
+  expect,
+  it,
+  vi,
+} from 'vitest';
+import type {
+  MatchState,
+  RandomFn,
+} from '../../../engine/types';
 import { TutorialProvider } from '../../../contexts/TutorialContext';
 import { GameModeProvider } from '../../../contexts/GameModeContext';
 import { ToastProvider } from '../../../contexts/ToastContext';
@@ -10,54 +24,54 @@ import Board from '../Board';
 import { resolveBetrayalRerollTargetBoxSize } from '../recentRollPresentation';
 import { canUseRabbitFootForRecentRoll } from '../possessionActionReadModel';
 import {
-    resolvePendingEventRollResolutionRequiredPlayerIds,
-    resolveRecentRollRequiredPlayerIds,
+  resolvePendingEventRollResolutionRequiredPlayerIds,
+  resolveRecentRollRequiredPlayerIds,
 } from '../acknowledgementReadModel';
 import {
-    resolveExplorableRoomSlots,
-    resolveRoomPlacementPreview,
+  resolveExplorableRoomSlots,
+  resolveRoomPlacementPreview,
 } from '../roomDiscoveryModel';
 import {
-    BETRAYAL_COMMANDS,
-    BetrayalDomain,
-    EXPLORER_CATALOG,
-    createBetrayalCharacterSelectCore,
-    createBetrayalFoundationCore,
-    type BetrayalCommandMap,
-    type BetrayalCore,
-    type BetrayalTraitKey,
-    type UseEffectProfile,
+  BetrayalDomain,
+  EXPLORER_CATALOG,
+  createBetrayalCharacterSelectCore,
+  createBetrayalFoundationCore,
+  type BetrayalCore,
+  type BetrayalTraitKey,
+  type UseEffectProfile,
 } from '../game';
+import { BETRAYAL_COMMANDS } from '../commands';
+import type { BetrayalCommandMap } from '../commandTypes';
 import { resolveHelpingHandsTrollHandMoveOptions } from '../hauntAttackRewardReadModel';
 import {
-    resolveBetrayalMonsterActionPanel,
-    resolveBetrayalMonsterMoveTargetRooms,
-    resolveBetrayalMonsterMovementGroups,
-    resolveBetrayalNormalMonsterAttackTargets,
-    resolveMagicCameraPhantomAttackTargets,
-    type BetrayalMonsterMovementRollGroupResult,
+  resolveBetrayalMonsterActionPanel,
+  resolveBetrayalMonsterMoveTargetRooms,
+  resolveBetrayalMonsterMovementGroups,
+  resolveBetrayalNormalMonsterAttackTargets,
+  resolveMagicCameraPhantomAttackTargets,
+  type BetrayalMonsterMovementRollGroupResult,
 } from '../monsterActionReadModel';
 import {
-    applyBetrayalCommand,
-    BETRAYAL_FIXED_RANDOM,
-    createBetrayalCommand,
-    createBetrayalScriptedRandom,
-    createCorpseLootReadyCore,
-    createCrimsonJackHauntCore,
-    createFirstScenarioHauntCore,
-    createStartedFirstScenarioCore,
-    createStartedFirstScenarioTutorialCore,
-    createJackSpiritMovementRollReadyCore,
-    createJackSpiritPostReviveAttackReadyCore,
-    createMummyTraitorVictoryReadyTutorialCore,
-    playMummyScenarioToSurvivorVictory,
-    playMummyScenarioToTraitorVictory,
-    playFirstScenarioToSurvivorVictory,
+  applyBetrayalCommand,
+  BETRAYAL_FIXED_RANDOM,
+  createBetrayalCommand,
+  createBetrayalScriptedRandom,
+  createCorpseLootReadyCore,
+  createCrimsonJackHauntCore,
+  createFirstScenarioHauntCore,
+  createStartedFirstScenarioCore,
+  createStartedFirstScenarioTutorialCore,
+  createJackSpiritMovementRollReadyCore,
+  createJackSpiritPostReviveAttackReadyCore,
+  createMummyTraitorVictoryReadyTutorialCore,
+  playMummyScenarioToSurvivorVictory,
+  playMummyScenarioToTraitorVictory,
+  playFirstScenarioToSurvivorVictory,
 } from '../testing/firstScenarioTestUtils';
 import {
-    BETRAYAL_DISCOVERY_POOLS,
-    BETRAYAL_SCENARIO_CONFIGS,
-    DEFAULT_BETRAYAL_SCENARIO_CARD_ID,
+  BETRAYAL_DISCOVERY_POOLS,
+  BETRAYAL_SCENARIO_CONFIGS,
+  DEFAULT_BETRAYAL_SCENARIO_CARD_ID,
 } from '../scenarioConfig';
 import gameLocale from '../../../../public/locales/zh-CN/game-betrayal.json';
 import commonLocale from '../../../../public/locales/zh-CN/common.json';
@@ -143,7 +157,7 @@ describe('Betrayal dice reroll hit targets', () => {
         expect(transparentHitBoxPadding).toBe(0);
     });
 
-    it('物理骰较小时透明命中区最多只弱外扩，不冒充候选高亮', () => {
+    it('物理骰较小时透明命中区仍贴合投影，不再留下外扩间隙', () => {
         const layout = {
             id: 1,
             x: 500,
@@ -164,8 +178,8 @@ describe('Betrayal dice reroll hit targets', () => {
         const visibleMax = Math.max(layout.visualWidth, layout.visualHeight);
         const transparentHitBoxPadding = (size - visibleMax) / 2;
 
-        expect(size).toBeCloseTo(39.48, 2);
-        expect(transparentHitBoxPadding).toBeLessThanOrEqual(4);
+        expect(size).toBeCloseTo(31.98, 2);
+        expect(transparentHitBoxPadding).toBe(0);
     });
 });
 
@@ -940,38 +954,6 @@ function dismissBlockingBoardOverlays(core: BetrayalCore): BetrayalCore {
     core.pendingEventChoice = null;
     core.recentRoll = null;
     return core;
-}
-
-function advanceScenarioReaderPastOpeningIfPresent({
-    label,
-    bodyText,
-}: {
-    label: string;
-    bodyText: string;
-}) {
-    const openingCinematic = screen.queryByTestId('betrayal-scenario-opening-cinematic');
-    if (!openingCinematic) {
-        expect(screen.getByTestId('betrayal-scenario-book')).toBeInTheDocument();
-        return false;
-    }
-
-    expect(screen.getByTestId('betrayal-scenario-opening-stage')).toBeInTheDocument();
-    expect(openingCinematic).toHaveTextContent(label);
-    expect(openingCinematic).not.toHaveTextContent('木乃伊横行');
-    expect(within(openingCinematic).getByText(label)).toHaveClass('text-[30px]');
-    expect(within(openingCinematic).getByTestId('betrayal-cinematic-terminal-mark')).toHaveClass('text-[12px]');
-    expect(screen.getByTestId('betrayal-scenario-reader-close')).toHaveClass('text-[12px]');
-    expect(openingCinematic).toHaveTextContent(bodyText);
-    expect(screen.queryByTestId('betrayal-scenario-opening-source-status')).not.toBeInTheDocument();
-    expect(openingCinematic).not.toHaveTextContent('本地规则源正文');
-    expect(openingCinematic).not.toHaveTextContent('正式中文转写');
-    expect(openingCinematic).toHaveAttribute('data-cinematic-narration', 'opening');
-    expect(openingCinematic).toHaveAttribute('data-cinematic-stage', 'standalone');
-    expect(screen.queryByTestId('betrayal-scenario-book')).not.toBeInTheDocument();
-    expect(screen.queryByTestId('betrayal-scenario-book-section-prologue')).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByTestId('betrayal-scenario-reader-next-zone'));
-    return true;
 }
 
 function createDustHauntRevealBoardCore(playerIds: string[] = ['0', '1', '2']): BetrayalCore {
@@ -1971,7 +1953,7 @@ describe('Betrayal Board foundation', () => {
             expect(screen.getByTestId('betrayal-start-scenario-opening-stage')).toBeInTheDocument();
         });
         const startOpening = screen.getByTestId('betrayal-start-scenario-opening-cinematic');
-        expect(startOpening).toHaveTextContent('英雄开场');
+        expect(startOpening).toHaveTextContent('英雄开场过场');
         expect(startOpening).not.toHaveTextContent('木乃伊横行');
         expect(screen.queryByTestId('betrayal-start-scenario-opening-source-status')).not.toBeInTheDocument();
         expect(startOpening).not.toHaveTextContent('本地规则源正文');
@@ -2332,7 +2314,7 @@ describe('Betrayal Board foundation', () => {
         expect(screen.queryByTestId('betrayal-reference-card-image')).not.toBeInTheDocument();
 
         expect(screen.queryByTestId('betrayal-scenario-opening-stage')).not.toBeInTheDocument();
-        expect(screen.getByTestId('betrayal-scenario-reader-dialog')).not.toHaveTextContent('英雄开场');
+        expect(screen.getByTestId('betrayal-scenario-reader-dialog')).not.toHaveTextContent('英雄开场过场');
         expect(screen.getByTestId('betrayal-scenario-reader-dialog')).not.toHaveTextContent('敢阻我者必死');
         expect(screen.getByTestId('betrayal-scenario-reader-header-progress')).toHaveTextContent('1/1');
         expect(screen.getByTestId('betrayal-scenario-reader-footer-progress')).toHaveTextContent('1/1');
@@ -2379,7 +2361,7 @@ describe('Betrayal Board foundation', () => {
         expect(screen.getByTestId('betrayal-scenario-reader-role')).toHaveTextContent('叛徒剧本书');
 
         expect(screen.queryByTestId('betrayal-scenario-opening-stage')).not.toBeInTheDocument();
-        expect(screen.getByTestId('betrayal-scenario-reader-dialog')).not.toHaveTextContent('叛徒开场');
+        expect(screen.getByTestId('betrayal-scenario-reader-dialog')).not.toHaveTextContent('叛徒开场过场');
         expect(screen.getByTestId('betrayal-scenario-reader-dialog')).not.toHaveTextContent('牺牲朋友也在所不惜');
         expect(screen.getByTestId('betrayal-scenario-reader-header-progress')).toHaveTextContent('1/1');
         expect(screen.getByTestId('betrayal-scenario-reader-footer-progress')).toHaveTextContent('1/1');
@@ -3974,7 +3956,7 @@ describe('Betrayal Board foundation', () => {
             />,
         );
 
-        expect(screen.getByTestId('betrayal-inventory-medical-kit')).not.toHaveTextContent('下回合');
+        expect(screen.queryByTestId('betrayal-inventory-medical-kit')).not.toBeInTheDocument();
         expect(screen.getByTestId('betrayal-inventory-rope')).not.toHaveTextContent('下回合');
         expect(screen.getByTestId('betrayal-inventory-omen-book')).not.toHaveTextContent('下回合');
     });

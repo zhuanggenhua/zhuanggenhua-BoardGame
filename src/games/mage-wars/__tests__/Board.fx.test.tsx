@@ -622,7 +622,7 @@ describe('MageWarsBoard FX wiring', () => {
         expect(screen.getAllByTestId('mock-card-preview').some((node) => node.textContent === '野性山猫')).toBe(true);
     });
 
-    it('dims newly summoned creatures when their action marker is not ready', () => {
+    it('shows the spent action token without dimming newly summoned creatures', () => {
         const baseCore = MageWarsDomain.setup(['0', '1'], fixedRandom);
         const wolf: MageWarsArenaObjectState = {
             ...creatureObject('mwobj-0-2819-1', '0', 2819, '丛林灰狼', ARENA_ZONE_IDS.A3),
@@ -659,13 +659,33 @@ describe('MageWarsBoard FX wiring', () => {
 
         expect(spentWolf).not.toBeNull();
         expect(spentWolf?.getAttribute('data-action-ready')).toBe('false');
-        expect(spentWolf?.getAttribute('data-visual-action-state')).toBe('spent');
-        expect(spentWolf?.className).toContain('grayscale');
-        expect(spentWolf?.className).toContain('opacity-55');
+        expect(spentWolf?.getAttribute('data-action-token-state')).toBe('spent');
+        expect(spentWolf?.getAttribute('data-visual-action-state')).toBeNull();
+        expect(spentWolf?.className).not.toContain('grayscale');
+        expect(spentWolf?.className).not.toContain('opacity-55');
+        expect(spentWolf?.className).not.toContain('brightness-75');
+        expect(spentWolf?.className).not.toContain('saturate-50');
+        const spentActionToken = spentWolf?.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"] img');
+        const spentActionTokenSlot = spentWolf?.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"]');
+        expect(spentActionToken).not.toBeNull();
+        expect(spentActionTokenSlot?.getAttribute('data-action-token-image-key')).toContain('ready-token-back');
+        expect(spentActionToken?.getAttribute('src')).toContain('ready-token-back');
+        expect(spentActionTokenSlot?.getAttribute('data-action-token-position')).toBe('entity-left-inside-midline');
+        expect(spentActionTokenSlot?.closest('[data-testid="mage-wars-entity-status-token-rail"]')?.getAttribute('data-token-rail-axis')).toBe('vertical');
+        expect(spentActionTokenSlot?.closest('[data-testid="mage-wars-entity-status-token-rail"]')?.getAttribute('data-token-rail-position')).toBe('entity-left-inside-midline');
         expect(readyCatCard).not.toBeNull();
         expect(readyCatCard?.getAttribute('data-action-ready')).toBe('true');
+        expect(readyCatCard?.getAttribute('data-action-token-state')).toBe('ready');
         expect(readyCatCard?.getAttribute('data-visual-action-state')).toBeNull();
         expect(readyCatCard?.className).not.toContain('grayscale');
+        const readyActionToken = readyCatCard?.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"] img');
+        const readyActionTokenSlot = readyCatCard?.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"]');
+        expect(readyActionToken).not.toBeNull();
+        expect(readyActionTokenSlot?.getAttribute('data-action-token-image-key')).toContain('ready-token-front');
+        expect(readyActionToken?.getAttribute('src')).toContain('ready-token-front');
+        expect(readyActionTokenSlot?.getAttribute('data-action-token-position')).toBe('entity-left-inside-midline');
+        expect(screen.queryAllByTestId('mage-wars-mage-hud-token-icon')).toHaveLength(0);
+        expect(screen.queryAllByTestId('mage-wars-mage-hud-current-badge').some((badge) => badge.querySelector('img'))).toBe(false);
     });
 
     it('uses public view switching for opponent discard instead of rendering a second discard pile', async () => {
@@ -1519,17 +1539,34 @@ describe('MageWarsBoard browse interactions', () => {
         expect(changedIds).not.toEqual(beforeIds);
     });
 
-    it('opens mage description magnification from the player hint card itself', () => {
+    it('opens mage description magnification from the player hint card inspect button', () => {
         const { container } = renderBoardWithProviders(<MageWarsBoard {...boardProps()} />);
         const selfHintCard = container.querySelector<HTMLElement>(
             '[data-testid="mage-wars-mage-hud-self"] [data-testid="mage-wars-mage-hud-hint-card"]',
         );
+        const inspectButton = selfHintCard?.querySelector<HTMLButtonElement>(
+            '[data-testid="mage-wars-card-inspect-button"]',
+        );
 
         expect(selfHintCard).not.toBeNull();
-        expect(selfHintCard?.getAttribute('role')).toBe('button');
-        expect(selfHintCard?.getAttribute('tabindex')).toBe('0');
+        expect(selfHintCard?.getAttribute('role')).toBeNull();
+        expect(selfHintCard?.getAttribute('tabindex')).toBeNull();
+        expect(selfHintCard?.getAttribute('data-hud-hit-surface')).toBe('visual-pass-through');
+        expect(inspectButton).not.toBeNull();
+        const statIcons = Array.from(container.querySelectorAll<HTMLElement>(
+            '[data-testid="mage-wars-mage-hud-self"] [data-testid="mage-wars-mage-hud-stat-icon"]',
+        ));
+        expect(statIcons).toHaveLength(3);
+        for (const statIcon of statIcons) {
+            expect(statIcon.getAttribute('data-hud-hit-surface')).toBe('visual-pass-through');
+            expect(statIcon.className).toContain('pointer-events-none');
+            expect(statIcon.querySelector('[data-testid="mage-wars-mage-hud-icon-tooltip"]')?.textContent).toContain('/');
+        }
 
         fireEvent.click(selfHintCard!);
+        expect(screen.getByTestId('mage-wars-card-magnify-overlay').getAttribute('aria-hidden')).toBe('true');
+
+        fireEvent.click(inspectButton!);
         expect(screen.getByTestId('mage-wars-card-magnify-overlay').getAttribute('aria-hidden')).toBe('false');
         expect(screen.getByTestId('mage-wars-card-magnify-content').getAttribute('data-mage-id')).not.toBeNull();
 
@@ -1537,6 +1574,9 @@ describe('MageWarsBoard browse interactions', () => {
         expect(screen.getByTestId('mage-wars-card-magnify-overlay').getAttribute('aria-hidden')).toBe('true');
 
         fireEvent.keyDown(selfHintCard!, { key: 'Enter' });
+        expect(screen.getByTestId('mage-wars-card-magnify-overlay').getAttribute('aria-hidden')).toBe('true');
+
+        fireEvent.click(inspectButton!);
         expect(screen.getByTestId('mage-wars-card-magnify-overlay').getAttribute('aria-hidden')).toBe('false');
     });
 
@@ -2873,7 +2913,7 @@ describe('MageWarsBoard object ability choices', () => {
 
     it('submits Blue Gremlin self ability from its ChoiceRequest command', () => {
         const dispatch = vi.fn();
-        const { container } = renderBoardWithProviders(
+        renderBoardWithProviders(
             <MageWarsBoard {...boardProps(createBlueGremlinAbilityCore())} dispatch={dispatch} />,
         );
 
@@ -2897,7 +2937,7 @@ describe('MageWarsBoard object ability choices', () => {
 
     it('casts Grey Angel redemption sacrifice by selecting a living object target', async () => {
         const dispatch = vi.fn();
-        const { container } = renderBoardWithProviders(
+        renderBoardWithProviders(
             <MageWarsBoard {...boardProps(createGreyAngelAbilityCore())} dispatch={dispatch} />,
         );
 
@@ -2941,7 +2981,7 @@ describe('MageWarsBoard object ability choices', () => {
 
     it('requires Asyran Cleric Healing Light to select a highlighted living object target', async () => {
         const dispatch = vi.fn();
-        const { container } = renderBoardWithProviders(
+        renderBoardWithProviders(
             <MageWarsBoard {...boardProps(createAsyranClericHealingLightCore())} dispatch={dispatch} />,
         );
 
@@ -3349,24 +3389,49 @@ describe('MageWarsBoard token placement', () => {
         };
     }
 
-    it('renders guard tokens below mage and creature cards instead of covering the card face', () => {
+    it('keeps creature and mage tokens in a left-inside vertical rail', () => {
         const { container } = renderBoardWithProviders(<MageWarsBoard {...boardProps(createGuardTokenPlacementCore())} />);
 
-        const tokenRails = Array.from(container.querySelectorAll<HTMLElement>(
-            '[data-testid="mage-wars-entity-status-token-rail"]',
-        ));
-        expect(tokenRails.length).toBeGreaterThanOrEqual(2);
-        for (const tokenRail of tokenRails) {
-            expect(tokenRail.querySelector('img[alt="tokens.guard"]')).not.toBeNull();
-            expect(tokenRail?.className).toContain('top-full');
-            expect(tokenRail?.className).toContain('left-1/2');
-            expect(tokenRail?.className).toContain('-translate-x-1/2');
-            expect(tokenRail?.className).not.toContain('bottom');
-        }
+        expect(screen.queryAllByTestId('mage-wars-mage-hud-token-icon')).toHaveLength(0);
 
         const guardedCat = screen.getByText('Guarded Cat')
             .closest<HTMLElement>('[data-testid="mage-wars-zone-field-card"]');
         expect(guardedCat).not.toBeNull();
+        const guardedCatRail = guardedCat?.querySelector<HTMLElement>(
+            '[data-testid="mage-wars-entity-status-token-rail"]',
+        );
+        expect(guardedCatRail).not.toBeNull();
+        expect(guardedCatRail?.querySelector('img[alt="tokens.guard"]')).not.toBeNull();
+        expect(guardedCatRail?.className).toContain('left-1');
+        expect(guardedCatRail?.className).toContain('top-1/2');
+        expect(guardedCatRail?.className).toContain('-translate-y-1/2');
+        expect(guardedCatRail?.getAttribute('data-token-rail-position')).toBe('entity-left-inside-midline');
+        expect(guardedCatRail?.getAttribute('data-token-rail-axis')).toBe('vertical');
+        expect(guardedCatRail?.getAttribute('data-token-rail-placement')).toBe('inside');
+        expect(guardedCatRail?.getAttribute('data-token-rail-layout')).toBe('stack');
+        expect(guardedCatRail?.className).not.toContain('top-full');
+        expect(guardedCatRail?.className).not.toContain('-translate-x');
+        const guardedCatRailOrder = Array.from(guardedCatRail?.children ?? []).map((child) => (
+            (child as HTMLElement).dataset.tokenKind ?? (child as HTMLElement).dataset.testid
+        ));
+        expect(guardedCatRailOrder.slice(0, 2)).toEqual(['action', 'mage-wars-guard-token-slot']);
+
+        const mageEntity = container.querySelector<HTMLElement>(
+            '[data-testid="mage-wars-zone-mage-entity"][data-player-id="0"]',
+        );
+        expect(mageEntity).not.toBeNull();
+        expect(mageEntity?.getAttribute('data-action-ready')).toBe('true');
+        expect(mageEntity?.getAttribute('data-action-token-state')).toBe('ready');
+        expect(mageEntity?.getAttribute('data-quickcast-ready')).toBe('true');
+        expect(mageEntity?.getAttribute('data-quickcast-token-state')).toBe('ready');
+        const mageTokenRail = mageEntity?.querySelector<HTMLElement>('[data-testid="mage-wars-entity-status-token-rail"]');
+        expect(mageTokenRail?.getAttribute('data-token-rail-position')).toBe('entity-left-inside-midline');
+        expect(mageTokenRail?.getAttribute('data-token-rail-axis')).toBe('vertical');
+        expect(mageTokenRail?.getAttribute('data-token-rail-layout')).toBe('stack');
+        expect(mageTokenRail?.getAttribute('data-token-rail-placement')).toBe('inside');
+        expect(mageEntity?.querySelector('[data-testid="mage-wars-action-token-slot"]')?.getAttribute('data-action-token-position')).toBe('entity-left-inside-midline');
+        expect(mageEntity?.querySelector('[data-testid="mage-wars-quickcast-token-slot"]')?.getAttribute('data-quickcast-token-position')).toBe('entity-left-inside-midline');
+        expect(mageEntity?.querySelector('[data-testid="mage-wars-guard-token-slot"]')?.getAttribute('data-guard-token-position')).toBe('entity-left-inside-midline');
         fireEvent.click(guardedCat!);
 
         const guardAction = screen.getByTestId('mage-wars-selected-unit-guard');
@@ -3416,7 +3481,11 @@ describe('MageWarsBoard token placement', () => {
         expect(mageLifeReadout).not.toBeNull();
         expect(mageLifeReadout?.getAttribute('data-life-remaining')).toBe('18');
         expect(mageLifeReadout?.getAttribute('data-life-visible')).toBe('false');
+        expect(mageLifeReadout?.getAttribute('data-life-readout-position')).toBe('entity-right-midline');
         expect(mageLifeReadout?.querySelector('[data-testid="mage-wars-mage-entity-life-readout-text"]')?.textContent).toBe('18/24');
+        const mageTokenRail = mageEntity?.querySelector<HTMLElement>('[data-testid="mage-wars-entity-status-token-rail"]');
+        expect(mageTokenRail?.getAttribute('data-token-rail-layout')).toBe('stack');
+        expect(mageTokenRail?.getAttribute('data-token-rail-position')).toBe('entity-left-inside-midline');
 
         fireEvent.click(lifeToggle);
         expect(lifeToggle.getAttribute('aria-pressed')).toBe('true');
@@ -3424,6 +3493,8 @@ describe('MageWarsBoard token placement', () => {
         expect(creatureLifeReadout?.getAttribute('data-life-visible')).toBe('true');
         expect(creatureLifeReadout?.className).toContain('opacity-100');
         expect(mageLifeReadout?.getAttribute('data-life-visible')).toBe('true');
+        expect(mageTokenRail?.getAttribute('data-token-rail-layout')).toBe('stack');
+        expect(mageTokenRail?.getAttribute('data-token-rail-placement')).toBe('inside');
 
         expect(screen.queryByAltText('tokens.damage')).toBeNull();
     });

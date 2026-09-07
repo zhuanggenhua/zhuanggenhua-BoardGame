@@ -11,6 +11,7 @@ import {
     resolveConnectedRoomIds,
     roomDistanceByLayout,
 } from './roomMapModel';
+import { canUseSkeletonKeyForMove } from './possessionActionReadModel';
 import type {
     BetrayalCore,
     BetrayalRoomNode,
@@ -33,6 +34,34 @@ export function resolveMoveTargetRooms(core: BetrayalCore): BetrayalRoomNode[] {
     }
     const connectedIds = resolveConnectedRoomIds(core.rooms, activeRoom.id);
     return core.rooms.filter((room) => room.state === 'discovered' && connectedIds.has(room.id));
+}
+
+export type BetrayalMoveTargetReadModel = {
+    normalMoveTargetRooms: BetrayalRoomNode[];
+    skeletonKeyMoveTargetRooms: BetrayalRoomNode[];
+    skeletonKeyMoveTargetRoomIds: Set<string>;
+    moveTargetRooms: BetrayalRoomNode[];
+    moveTargetRoomIds: Set<string>;
+};
+
+export function resolveBetrayalMoveTargetReadModel(core: BetrayalCore): BetrayalMoveTargetReadModel {
+    const normalMoveTargetRooms = resolveMoveTargetRooms(core);
+    const skeletonKeyMoveTargetRooms = core.rooms.filter((room) => canUseSkeletonKeyForMove(core, room.id));
+    const byId = new Map<string, BetrayalRoomNode>();
+    for (const room of normalMoveTargetRooms) {
+        byId.set(room.id, room);
+    }
+    for (const room of skeletonKeyMoveTargetRooms) {
+        byId.set(room.id, room);
+    }
+    const moveTargetRooms = [...byId.values()];
+    return {
+        normalMoveTargetRooms,
+        skeletonKeyMoveTargetRooms,
+        skeletonKeyMoveTargetRoomIds: new Set(skeletonKeyMoveTargetRooms.map((room) => room.id)),
+        moveTargetRooms,
+        moveTargetRoomIds: new Set(moveTargetRooms.map((room) => room.id)),
+    };
 }
 
 function resolveMoveCostFromRoom(room: BetrayalRoomNode | undefined): number {

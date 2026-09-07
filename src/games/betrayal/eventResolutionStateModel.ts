@@ -1,6 +1,4 @@
-import {
-    eventRollResolutionNeedsSharedAcknowledgement,
-} from './acknowledgementReadModel';
+import { eventRollResolutionNeedsSharedAcknowledgement } from './acknowledgementReadModel';
 import {
     acknowledgeEventEffectCardResolution,
     cloneDiscoverySummary,
@@ -47,11 +45,11 @@ import { consumeNextNonCombatTraitReplacementAfterTraitRoll } from './traitRollM
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
     BetrayalPendingEventChoiceState,
     BetrayalPendingEventRollResolutionState,
     BetrayalRecentRollState,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type EventChoiceResolvedEvent = Extract<BetrayalEvent, { type: 'EVENT_CHOICE_RESOLVED' }>;
 type EventRolledEvent = Extract<BetrayalEvent, { type: 'EVENT_ROLLED' }>;

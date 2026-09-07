@@ -4,7 +4,10 @@ import type {
 } from '../../engine/types';
 import { BETRAYAL_COMMANDS } from './commands';
 import { rollBetrayalDicePips } from './diceRules';
-import { cloneExplorerSummary, findExplorerByPlayerId } from './explorerReadModel';
+import {
+    cloneExplorerSummary,
+    findExplorerByPlayerId,
+} from './explorerReadModel';
 import {
     HELPING_HANDS_STRANGE_AMULET_EFFECT_ID,
     resolveJackSpiritSpawnRoomId,
@@ -33,8 +36,6 @@ import {
     setExplorerTraitPosition,
 } from './traitTrackModel';
 import type {
-    BetrayalCommand,
-    BetrayalCommandMap,
     BetrayalCore,
     BetrayalExplorerSummary,
     BetrayalMonsterSummary,
@@ -43,6 +44,8 @@ import type {
     BetrayalScenarioRuntimeStatus,
     BetrayalTraitKey,
 } from './game';
+import type { BetrayalCommand } from './commandTypes';
+import type { BetrayalCommandMap } from './commandTypes';
 
 const BROOCH_CARD_ID = 'brooch';
 

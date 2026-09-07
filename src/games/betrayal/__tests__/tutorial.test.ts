@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+    describe,
+    expect,
+    it,
+} from 'vitest';
 import zhCNLocale from '../../../../public/locales/zh-CN/game-betrayal.json';
 import enLocale from '../../../../public/locales/en/game-betrayal.json';
 import {
@@ -10,7 +14,7 @@ import {
 import { resolvePossessionAtlasVisual } from '../possessionAtlas';
 import { BETRAYAL_DISCOVERY_POOLS } from '../scenarioConfig';
 import tutorialCatalog from '../tutorial';
-import { BETRAYAL_COMMANDS } from '../game';
+import { BETRAYAL_COMMANDS } from '../commands';
 import { resolveBetrayalHauntSpecialActionStatus } from '../hauntSpecialActionReadModel';
 import {
     acknowledgePendingCardResolution,
@@ -137,13 +141,6 @@ describe('Betrayal 教程配置', () => {
             'inventory-and-help',
             'open-move-targets',
             'move-to-hallway',
-            'start-trade',
-            'choose-trade-item',
-            'choose-trade-target',
-            'choose-trade-return',
-            'send-trade-request',
-            'request-waiting',
-            'trade-review',
             'explore-upper',
             'rotate-room-placement',
             'confirm-room-placement',
@@ -154,6 +151,28 @@ describe('Betrayal 教程配置', () => {
             'use-rabbit-foot',
             'rabbit-foot-result',
             'finish',
+            'return-to-table-after-damage',
+            'end-turn-after-event',
+            'watch-teammate-one-omen-turn',
+            'teammate-one-omen-results',
+            'watch-teammate-two-omen-turn',
+            'teammate-two-omen-results',
+            'move-to-grand-staircase',
+            'switch-to-upper-floor',
+            'move-to-upper-landing',
+            'end-turn-from-upper-landing',
+            'watch-teammate-haunt-trigger',
+            'teammate-confirm-haunt-trigger',
+            'haunt-hero-reader',
+            'haunt-hero-reader-turn-page',
+            'haunt-hero-reader-goal',
+            'haunt-hero-reader-close',
+            'wait-for-hero-turn-after-haunt',
+            'open-library-move-after-goal',
+            'move-to-library-after-goal',
+            'hero-study-name-roll',
+            'hero-study-name-result',
+            'hero-study-name-closeout',
         ]);
         expect(new Set(manifest?.steps.map((step) => step.id)).size).toBe(manifest?.steps.length);
 
@@ -167,25 +186,17 @@ describe('Betrayal 教程配置', () => {
         expect(manifest?.steps.find((step) => step.id === 'observe-teammate')?.highlightTarget).toBe('betrayal-bottom-teammate-1');
         expect(manifest?.steps.find((step) => step.id === 'focus-self-room')?.highlightTarget).toBe('betrayal-focus-self-room');
         expect(manifest?.steps.find((step) => step.id === 'haunt-risk-track')?.highlightTarget).toBe('betrayal-haunt-risk-status');
-        expect(manifest?.steps.find((step) => step.id === 'start-trade')?.highlightTarget).toBe('betrayal-action-trade');
-        expect(manifest?.steps.find((step) => step.id === 'start-trade')?.infoStep).toBe(true);
-        expect(manifest?.steps.find((step) => step.id === 'choose-trade-item')?.highlightTarget).toBe('betrayal-inventory-medical-kit');
-        expect(manifest?.steps.find((step) => step.id === 'choose-trade-target')?.highlightTarget).toBe('betrayal-room-occupant-hallway-1');
-        expect(manifest?.steps.find((step) => step.id === 'choose-trade-return')?.highlightTarget).toBe('betrayal-trade-return-selector');
-        expect(manifest?.steps.find((step) => step.id === 'send-trade-request')?.allowedCommands).toEqual([
-            'TRADE_POSSESSION',
-        ]);
-        const requestWaitingStep = manifest?.steps.find((step) => step.id === 'request-waiting');
-        expect(requestWaitingStep?.aiActions).toEqual([
-            {
-                commandType: 'RESOLVE_TRADE_AGREEMENT',
-                playerId: '1',
-                payload: { accept: true },
-                waitForBoardSyncAfter: true,
-            },
-        ]);
-        expect(requestWaitingStep?.requireAction).not.toBe(true);
-        expect(requestWaitingStep?.viewAs).toBe('0');
+        for (const tradeStepId of [
+            'start-trade',
+            'choose-trade-item',
+            'choose-trade-target',
+            'choose-trade-return',
+            'send-trade-request',
+            'request-waiting',
+            'trade-review',
+        ]) {
+            expect(manifest?.steps.find((step) => step.id === tradeStepId)).toBeUndefined();
+        }
         expect(manifest?.steps.some((step) => step.id === 'accept-trade-request')).toBe(false);
         expect(manifest?.steps.find((step) => step.id === 'rotate-room-placement')?.highlightTarget).toBe('betrayal-room-placement-rotate-right');
         expect(manifest?.steps.find((step) => step.id === 'rotate-room-placement')?.requireAction).toBe(true);
@@ -199,12 +210,137 @@ describe('Betrayal 教程配置', () => {
         expect(manifest?.steps.find((step) => step.id === 'use-rabbit-foot')?.highlightTarget).toBe('betrayal-inventory-rope');
         expect(manifest?.steps.find((step) => step.id === 'rabbit-foot-result')?.highlightTarget).toBe('betrayal-latest-discovery');
         expect(manifest?.steps.find((step) => step.id === 'rabbit-foot-result')?.infoStep).toBe(true);
-        expect(manifest?.steps.find((step) => step.id === 'rabbit-foot-result')?.allowedCommands).toEqual([
-            'FINALIZE_EVENT_ROLL',
-        ]);
+        expect(manifest?.steps.find((step) => step.id === 'rabbit-foot-result')?.allowedCommands).toEqual(['FINALIZE_EVENT_ROLL']);
         expect(manifest?.steps.find((step) => step.id === 'rabbit-foot-result')?.advanceOnEvents).toEqual([
             { type: 'EVENT_ROLL_FINALIZED', match: { isFullyAcknowledged: true } },
         ]);
+        expect(manifest?.steps.find((step) => step.id === 'finish')).toMatchObject({
+            requireAction: true,
+            allowedCommands: ['RESOLVE_DAMAGE_ALLOCATION'],
+            advanceOnEvents: [{ type: 'DAMAGE_ALLOCATION_RESOLVED', match: { playerId: '0' } }],
+        });
+        expect(manifest?.steps.find((step) => step.id === 'return-to-table-after-damage')).toMatchObject({
+            highlightTarget: 'betrayal-discovery-continue',
+            requireAction: true,
+            allowedCommands: [],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'end-turn-after-event')).toMatchObject({
+            highlightTarget: 'betrayal-action-endTurn',
+            requireAction: true,
+            allowedCommands: ['END_TURN'],
+            advanceOnEvents: [{ type: 'TURN_ENDED', match: { previousPlayerId: '0', nextPlayerId: '1' } }],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'watch-teammate-one-omen-turn')).toMatchObject({
+            infoStep: true,
+            viewAs: '0',
+            randomPolicy: { mode: 'fixed', values: [1] },
+            autoAdvanceAfterAi: false,
+        });
+        expect(manifest?.steps.find((step) => step.id === 'watch-teammate-one-omen-turn')?.aiActions?.map((action) => ({
+            commandType: action.commandType,
+            playerId: action.playerId,
+            payload: action.payload,
+        }))).toEqual([
+            { commandType: 'MOVE_TO_ROOM', playerId: '1', payload: { roomId: 'entrance-hall' } },
+            { commandType: 'EXPLORE_ROOM', playerId: '1', payload: { roomId: 'ground-east' } },
+        ]);
+        expect(manifest?.steps.find((step) => step.id === 'teammate-one-omen-results')?.aiActions?.map((action) => ({
+            commandType: action.commandType,
+            playerId: action.playerId,
+            payload: action.payload,
+        }))).toEqual([
+            { commandType: 'ACKNOWLEDGE_CARD_RESOLUTION', playerId: '1', payload: undefined },
+            { commandType: 'END_TURN', playerId: '1', payload: undefined },
+        ]);
+        expect(manifest?.steps.find((step) => step.id === 'watch-teammate-two-omen-turn')).toMatchObject({
+            infoStep: true,
+            viewAs: '0',
+            randomPolicy: { mode: 'fixed', values: [1] },
+            autoAdvanceAfterAi: false,
+        });
+        expect(manifest?.steps.find((step) => step.id === 'move-to-grand-staircase')).toMatchObject({
+            highlightTarget: 'betrayal-action-move',
+            requireAction: true,
+            allowedCommands: ['MOVE_TO_ROOM'],
+            allowedTargets: ['hallway', 'grand-staircase'],
+            advanceOnEvents: [{ type: 'EXPLORER_MOVED', match: { playerId: '0', roomId: 'grand-staircase' } }],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'switch-to-upper-floor')).toMatchObject({
+            highlightTarget: 'betrayal-room-floor-up',
+            requireAction: true,
+            allowedCommands: [],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'move-to-upper-landing')).toMatchObject({
+            highlightTarget: 'betrayal-room-upper-landing',
+            requireAction: true,
+            allowedCommands: ['MOVE_TO_ROOM'],
+            allowedTargets: ['upper-landing'],
+            advanceOnEvents: [{ type: 'EXPLORER_MOVED', match: { playerId: '0', roomId: 'upper-landing' } }],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'move-to-library-room')).toBeUndefined();
+        expect(manifest?.steps.find((step) => step.id === 'end-turn-from-library')).toBeUndefined();
+        expect(manifest?.steps.find((step) => step.id === 'end-turn-from-upper-landing')).toMatchObject({
+            highlightTarget: 'betrayal-action-endTurn',
+            requireAction: true,
+            allowedCommands: ['END_TURN'],
+            advanceOnEvents: [{ type: 'TURN_ENDED', match: { previousPlayerId: '0', nextPlayerId: '1' } }],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'watch-teammate-haunt-trigger')).toMatchObject({
+            infoStep: true,
+            viewAs: '0',
+            randomPolicy: { mode: 'fixed', values: [3] },
+            autoAdvanceAfterAi: false,
+        });
+        expect(manifest?.steps.find((step) => step.id === 'watch-teammate-haunt-trigger')?.aiActions?.map((action) => ({
+            commandType: action.commandType,
+            playerId: action.playerId,
+            payload: action.payload,
+        }))).toEqual([
+            { commandType: 'EXPLORE_ROOM', playerId: '1', payload: { roomId: 'frontier-ground-east-south' } },
+        ]);
+        expect(manifest?.steps.find((step) => step.id === 'teammate-confirm-haunt-trigger')?.aiActions?.map((action) => ({
+            commandType: action.commandType,
+            playerId: action.playerId,
+            payload: action.payload,
+        }))).toEqual([
+            { commandType: 'ACKNOWLEDGE_CARD_RESOLUTION', playerId: '1', payload: undefined },
+        ]);
+        expect(manifest?.steps.filter((step) => (
+            (step.viewAs === '1' || step.viewAs === '2') &&
+            step.requireAction === true
+        ))).toEqual([]);
+        expect(manifest?.steps.find((step) => step.id === 'haunt-hero-reader')).toMatchObject({
+            infoStep: true,
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'open-library-move-after-goal')).toMatchObject({
+            highlightTarget: 'betrayal-action-move',
+            requireAction: true,
+            allowedCommands: [],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'move-to-library-after-goal')).toMatchObject({
+            highlightTarget: 'betrayal-room-upper-west',
+            requireAction: true,
+            allowedCommands: [BETRAYAL_COMMANDS.MOVE_TO_ROOM],
+            allowedTargets: ['upper-west'],
+            advanceOnEvents: [{ type: 'EXPLORER_MOVED', match: { playerId: '0', roomId: 'upper-west' } }],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'hero-study-name-roll')).toMatchObject({
+            highlightTarget: 'betrayal-action-use',
+            requireAction: true,
+            allowedCommands: [BETRAYAL_COMMANDS.STUDY_MUMMY_NAME],
+            randomPolicy: { mode: 'fixed', values: [3] },
+            advanceOnEvents: [{ type: 'MUMMY_NAME_STUDIED', match: { playerId: '0', success: true } }],
+            viewAs: '0',
+        });
         expect(manifest?.steps.find((step) => step.id === 'confirm-omen-card')).toBeUndefined();
         expect(manifest?.steps.find((step) => step.id === 'banish-mummy')).toBeUndefined();
     });
@@ -220,7 +356,7 @@ describe('Betrayal 教程配置', () => {
         expect(injectedPayloads).not.toMatch(/测试牌|测试事件|中性占位结果/);
     });
 
-    it('基础回合兼容入口保留真实的移动、交易、探索和使用命令链', () => {
+    it('基础回合兼容入口保留真实的移动、探索、使用和伤害命令链', () => {
         const defaultManifest = tutorialCatalog.tutorials['basic-setup-and-turn']?.manifest;
         const manifest = tutorialCatalog.tutorials['move-explore-use']?.manifest;
         const setupStep = manifest?.steps.find((step) => step.id === 'setup-runtime');
@@ -231,13 +367,14 @@ describe('Betrayal 教程配置', () => {
         const actionSteps = manifest?.steps.filter((step) => step.requireAction) ?? [];
         expect(actionSteps.map((step) => step.id)).toEqual([
             'move-to-hallway',
-            'send-trade-request',
             'explore-upper',
             'rotate-room-placement',
             'confirm-room-placement',
             'roll-event',
             'use-book',
             'use-rabbit-foot',
+            'finish',
+            'return-to-table-after-damage',
         ]);
         expect(defaultManifest?.steps.slice(0, manifest?.steps.length).map((step) => step.id))
             .toEqual(manifest?.steps.map((step) => step.id));
@@ -246,13 +383,14 @@ describe('Betrayal 教程配置', () => {
         expect(manifest?.steps.find((step) => step.id === 'open-move-targets')?.highlightTarget).toBe('betrayal-action-move');
         expect(actionSteps.map((step) => step.allowedCommands)).toEqual([
             ['MOVE_TO_ROOM'],
-            ['TRADE_POSSESSION'],
             [],
             [],
             ['EXPLORE_ROOM'],
             ['ROLL_EVENT'],
             ['USE_POSSESSION'],
             ['USE_RABBIT_FOOT', 'USE_ROLL_REROLL_ITEM'],
+            ['RESOLVE_DAMAGE_ALLOCATION'],
+            [],
         ]);
         expect(actionSteps.map((step) => step.allowedTargets ?? null)).toEqual([
             ['hallway'],
@@ -260,17 +398,20 @@ describe('Betrayal 教程配置', () => {
             null,
             null,
             null,
-            null,
             ['omen-book'],
             ['rope'],
+            null,
+            null,
         ]);
-        expect(manifest?.steps.find((step) => step.id === 'start-trade')?.highlightTarget).toBe('betrayal-action-trade');
-        expect(manifest?.steps.find((step) => step.id === 'choose-trade-item')?.highlightTarget).toBe('betrayal-inventory-medical-kit');
+        expect(manifest?.steps.find((step) => step.id === 'start-trade')).toBeUndefined();
+        expect(manifest?.steps.find((step) => step.id === 'choose-trade-item')).toBeUndefined();
         expect(actionSteps.find((step) => step.id === 'use-book')?.highlightTarget).toBe('betrayal-inventory-omen-book');
-        expect(actionSteps.at(-1)?.highlightTarget).toBe('betrayal-inventory-rope');
-        expect(setupInventory?.map((card) => card.id)).toEqual(['medical-kit', 'rope', 'omen-book']);
+        expect(actionSteps.find((step) => step.id === 'use-rabbit-foot')?.highlightTarget).toBe('betrayal-inventory-rope');
+        expect(actionSteps.find((step) => step.id === 'finish')?.highlightTarget).toBe('betrayal-damage-allocation-panel');
+        expect(actionSteps.at(-1)?.highlightTarget).toBe('betrayal-discovery-continue');
+        expect(setupInventory?.map((card) => card.id)).toEqual(['rope', 'omen-book']);
         expect(JSON.stringify(setupFields)).toContain('地图');
-        expect(JSON.stringify(setupFields)).toContain('头骨');
+        expect(JSON.stringify(setupFields)).not.toContain('头骨');
         expect(setupFields?.eventOrder?.map((event) => event.name)).toEqual(['标本剥制']);
         expect(JSON.stringify(setupFields)).not.toContain('测试中性事件');
     });
@@ -380,6 +521,8 @@ describe('Betrayal 教程配置', () => {
             'haunt-hero-reader-goal',
             'haunt-hero-reader-close',
             'wait-for-hero-turn-after-haunt',
+            'open-library-move-after-goal',
+            'move-to-library-after-goal',
             'hero-study-name-roll',
             'hero-study-name-result',
             'hero-study-name-closeout',
@@ -520,6 +663,20 @@ describe('Betrayal 教程配置', () => {
         }))).toEqual([
             { commandType: 'END_TURN', playerId: '2', payload: undefined },
         ]);
+        expect(manifest?.steps.find((step) => step.id === 'open-library-move-after-goal')).toMatchObject({
+            highlightTarget: 'betrayal-action-move',
+            requireAction: true,
+            allowedCommands: [],
+            viewAs: '0',
+        });
+        expect(manifest?.steps.find((step) => step.id === 'move-to-library-after-goal')).toMatchObject({
+            highlightTarget: 'betrayal-room-upper-west',
+            requireAction: true,
+            allowedCommands: [BETRAYAL_COMMANDS.MOVE_TO_ROOM],
+            allowedTargets: ['upper-west'],
+            advanceOnEvents: [{ type: 'EXPLORER_MOVED', match: { playerId: '0', roomId: 'upper-west' } }],
+            viewAs: '0',
+        });
         const studyNameStep = manifest?.steps.find((step) => step.id === 'hero-study-name-roll');
         expect(studyNameStep).toMatchObject({
             highlightTarget: 'betrayal-action-use',
@@ -550,7 +707,7 @@ describe('Betrayal 教程配置', () => {
         expect(readyCore.latestDiscovery).toBeNull();
         expect(readyCore.pendingCardResolutionQueue).toEqual([]);
         expect(readyCore.currentPlayer).toBe('0');
-        expect(readyCore.currentExplorer.roomId).toBe('upper-west');
+        expect(readyCore.currentExplorer.roomId).toBe('upper-landing');
         expect(readyCore.rooms.find((room) => room.id === 'upper-west')).toMatchObject({
             name: '图书馆',
             visualId: 'library',
@@ -614,14 +771,27 @@ describe('Betrayal 教程配置', () => {
             {},
         );
         expect(heroTurnCore.currentPlayer).toBe('0');
-        expect(heroTurnCore.currentExplorer.roomId).toBe('upper-west');
+        expect(heroTurnCore.currentExplorer.roomId).toBe('upper-landing');
         expect(resolveBetrayalHauntSpecialActionStatus(heroTurnCore, 'study-mummy-name', '0')).toMatchObject({
+            active: false,
+            canUse: false,
+            reason: '当前没有满足条件的作祟特殊行动。',
+        });
+        const libraryReadyCore = applyBetrayalCommand(
+            heroTurnCore,
+            BETRAYAL_COMMANDS.MOVE_TO_ROOM,
+            '0',
+            { roomId: 'upper-west' },
+        );
+        expect(libraryReadyCore.currentPlayer).toBe('0');
+        expect(libraryReadyCore.currentExplorer.roomId).toBe('upper-west');
+        expect(resolveBetrayalHauntSpecialActionStatus(libraryReadyCore, 'study-mummy-name', '0')).toMatchObject({
             active: true,
             canUse: true,
             reason: null,
         });
         const studyResultCore = applyBetrayalCommand(
-            heroTurnCore,
+            libraryReadyCore,
             BETRAYAL_COMMANDS.STUDY_MUMMY_NAME,
             '0',
             {},
@@ -1008,12 +1178,12 @@ describe('Betrayal 教程配置', () => {
         expect(zhCNLocale.tutorial.mainPath.title).toContain('主线教程');
         expect(zhCNLocale.tutorial.mainPath.description).toContain('基础回合');
         expect(zhCNLocale.tutorial.mainPath.description).toContain('事件处理');
-        expect(zhCNLocale.tutorial.mainPath.description).toContain('交易');
+        expect(zhCNLocale.tutorial.mainPath.description).not.toContain('交易');
         expect(zhCNLocale.tutorial.mainPath.description).not.toContain('驱逐木乃伊');
         expect(enLocale.tutorial.mainPath.title).toContain('Main Tutorial');
         expect(enLocale.tutorial.mainPath.description).toContain('core turn');
         expect(enLocale.tutorial.mainPath.description).toContain('event resolution');
-        expect(enLocale.tutorial.mainPath.description).toContain('trading');
+        expect(enLocale.tutorial.mainPath.description).not.toContain('trading');
         expect(enLocale.tutorial.mainPath.description).not.toContain('banishing the Mummy');
         expect(zhCNLocale.tutorial.basicSetup.description).toContain('按任意顺序');
         expect(zhCNLocale.tutorial.basicSetup.description).toContain('探索新房间会结束你的回合');
@@ -1124,7 +1294,7 @@ describe('Betrayal 教程配置', () => {
         expect(enLocale.tutorial.hauntNaturalTrigger.description).toContain('first hero objective action');
         expect(enLocale.tutorial.hauntNaturalTrigger.description).not.toContain('first two hero objective actions');
         expect(hauntTriggerSteps.setupNaturalHauntFlow).toContain('多数英雄视角');
-        expect(hauntTriggerSteps.setupNaturalHauntFlow).toContain('你在图书馆结束自己的回合');
+        expect(hauntTriggerSteps.setupNaturalHauntFlow).toContain('你在图书馆旁边结束自己的回合');
         expect(hauntTriggerSteps.setupNaturalHauntFlow).toContain('叛徒读本另有独立章节');
         expect(hauntTriggerSteps.handOffToTeammateOne).toContain('结束回合');
         expect(hauntTriggerSteps.watchTeammateOmenTurns).toContain('现在不是你的回合');
@@ -1149,21 +1319,29 @@ describe('Betrayal 教程配置', () => {
         expect(hauntTriggerSteps.teammateConfirmHauntTrigger).toContain('触发者看清公开结果');
         expect(hauntTriggerSteps.heroReaderOpened).toContain('队友 1 是揭秘者并成为叛徒');
         expect(hauntTriggerSteps.heroReaderOpened).toContain('你仍是英雄');
-        expect(hauntTriggerSteps.heroReaderOpened).toContain('英雄开场');
-        expect(hauntTriggerSteps.heroReaderOpened).toContain('先读开场页');
+        expect(hauntTriggerSteps.heroReaderOpened).toContain('英雄开场过场');
+        expect(hauntTriggerSteps.heroReaderOpened).toContain('不是剧本书目标页');
+        expect(hauntTriggerSteps.heroReaderOpened).toContain('一次性开场');
         expect(hauntTriggerSteps.heroReaderOpened).not.toContain('再合上档案');
-        expect(hauntTriggerSteps.heroReaderTurnPage).toContain('第一页开场');
-        expect(hauntTriggerSteps.heroReaderTurnPage).toContain('继续/下一页');
-        expect(hauntTriggerSteps.heroReaderTurnPage).toContain('第二页英雄目标');
-        expect(hauntTriggerSteps.heroReaderGoal).toContain('第二页英雄目标写明');
+        expect(hauntTriggerSteps.heroReaderTurnPage).toContain('开场过场读完后');
+        expect(hauntTriggerSteps.heroReaderTurnPage).toContain('底部“进入剧本书”');
+        expect(hauntTriggerSteps.heroReaderTurnPage).toContain('英雄剧本书目标页');
+        expect(hauntTriggerSteps.heroReaderGoal).toContain('英雄剧本书目标页写明');
         expect(hauntTriggerSteps.heroReaderGoal).toContain('石棺房、研究室或图书馆');
-        expect(hauntTriggerSteps.heroReaderGoal).toContain('你当前就在图书馆');
+        expect(hauntTriggerSteps.heroReaderGoal).toContain('你当前就在图书馆旁边');
+        expect(hauntTriggerSteps.heroReaderGoal).toContain('先移动进图书馆');
         expect(hauntTriggerSteps.heroReaderClose).toContain('点关闭回到牌桌');
-        expect(hauntTriggerSteps.heroReaderOpened).not.toContain('叛徒开场');
+        expect(hauntTriggerSteps.heroReaderOpened).not.toContain('叛徒开场过场');
         expect(hauntTriggerSteps.heroReaderOpened).not.toContain('先读叛徒');
         expect(hauntTriggerSteps.waitForHeroTurnAfterHaunt).toContain('作祟后轮序继续');
         expect(hauntTriggerSteps.waitForHeroTurnAfterHaunt).toContain('队友 2 按正式流程结束回合');
-        expect(hauntTriggerSteps.waitForHeroTurnAfterHaunt).toContain('图书馆（研究木乃伊的历史）');
+        expect(hauntTriggerSteps.waitForHeroTurnAfterHaunt).toContain('你仍在上层平台');
+        expect(hauntTriggerSteps.waitForHeroTurnAfterHaunt).toContain('图书馆可用于');
+        expect(hauntTriggerSteps.openLibraryMoveAfterGoal).toContain('已经读到英雄目标');
+        expect(hauntTriggerSteps.openLibraryMoveAfterGoal).toContain('先点“移动”');
+        expect(hauntTriggerSteps.moveToLibraryAfterGoal).toContain('相邻移动目标');
+        expect(hauntTriggerSteps.moveToLibraryAfterGoal).toContain('点击图书馆移动进去');
+        expect(hauntTriggerSteps.moveToLibraryAfterGoal).toContain('进去后才能执行');
         expect(hauntTriggerSteps.heroStudyNameRoll).toContain('石棺房、研究室或图书馆');
         expect(hauntTriggerSteps.heroStudyNameRoll).toContain('寻找木乃伊真名');
         expect(hauntTriggerSteps.heroStudyNameRoll).toContain('6+ 知识检定');
@@ -1189,7 +1367,9 @@ describe('Betrayal 教程配置', () => {
             [hauntTriggerSteps.heroReaderTurnPage, hauntTriggerSteps.heroReaderGoal],
             [hauntTriggerSteps.heroReaderGoal, hauntTriggerSteps.heroReaderClose],
             [hauntTriggerSteps.heroReaderClose, hauntTriggerSteps.waitForHeroTurnAfterHaunt],
-            [hauntTriggerSteps.waitForHeroTurnAfterHaunt, hauntTriggerSteps.heroStudyNameRoll],
+            [hauntTriggerSteps.waitForHeroTurnAfterHaunt, hauntTriggerSteps.openLibraryMoveAfterGoal],
+            [hauntTriggerSteps.openLibraryMoveAfterGoal, hauntTriggerSteps.moveToLibraryAfterGoal],
+            [hauntTriggerSteps.moveToLibraryAfterGoal, hauntTriggerSteps.heroStudyNameRoll],
             [hauntTriggerSteps.heroStudyNameRoll, hauntTriggerSteps.heroStudyNameResult],
             [hauntTriggerSteps.heroStudyNameResult, hauntTriggerSteps.heroStudyNameCloseout],
         ].flatMap(([previous, current]) => {

@@ -8,7 +8,6 @@ import {
 import type { DicePhysicsHighlightState, DicePhysicsRendererMode, DicePhysicsState } from './types';
 
 const DICE_PHYSICS_HIGHLIGHT_RENDERER = 'threejs-backside-shader-shell';
-const REROLL_LAUNCH_VISIBLE_MS = 1800;
 
 export interface DicePhysicsDieInput {
     id: number;
@@ -297,7 +296,7 @@ export function DiceBoxPhysicsSource({
                 engine.resize();
                 engine.setCanvasDiagnostics({
                     settled: settledRef.current,
-                    skinsReady: !requireDieSkins || dice.length === 0,
+                    skinsReady: !requireDieSkins || diceLengthRef.current === 0,
                 });
                 setEngineReady(true);
                 setEngineVersion((count) => count + 1);
@@ -451,7 +450,6 @@ export function DiceBoxPhysicsSource({
                     await restoreRerollStartValues(engine, startValues, targetValues);
                     previousDiceIdsRef.current = dice.map((die) => die.id);
                     setSettledState(false);
-                    await engine.playRerollLaunchPreview(rerollIndices, REROLL_LAUNCH_VISIBLE_MS);
                     await engine.rerollToValues(rerollIndices, targetValues, targetLockedIndices);
                 } finally {
                     finalizeVisibleSettledDice(engine);

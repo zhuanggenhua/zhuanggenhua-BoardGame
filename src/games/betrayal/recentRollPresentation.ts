@@ -12,14 +12,23 @@ import {
 } from "./acknowledgementReadModel";
 import { resolvePlayerName } from "./playerPresentation";
 
-const BETRAYAL_REROLL_TARGET_MIN_HIT_SIZE = 42;
-const BETRAYAL_REROLL_TARGET_MAX_HIT_PADDING = 3.75;
-
 export type EventRollConfirmationPresentation = {
   requiredPlayerIds: string[];
   acknowledgedPlayerIds: string[];
   confirmedCount: number;
   totalCount: number;
+  viewerHasAcknowledged: boolean;
+  canViewerAcknowledge: boolean;
+};
+
+export type RecentRollAcknowledgementPresentation = {
+  hasAcknowledgement: boolean;
+  requiredPlayerIds: string[];
+  acknowledgedPlayerIds: string[];
+  confirmedCount: number;
+  totalCount: number;
+  fullyAcknowledged: boolean;
+  hasAcknowledgeableRecentRoll: boolean;
   viewerHasAcknowledged: boolean;
   canViewerAcknowledge: boolean;
 };
@@ -44,7 +53,7 @@ export function buildRecentRollDisplayKey(
   ].join("::");
 }
 
-export function isAcknowledgeableRecentRollDisplay(
+function isAcknowledgeableRecentRollDisplay(
   recentRoll: BetrayalRecentRollState | null | undefined,
 ): boolean {
   if (!recentRoll) {
@@ -61,7 +70,7 @@ export function isAcknowledgeableRecentRollDisplay(
   );
 }
 
-export function resolveRecentRollRequiredPlayerIdsForDisplay(
+function resolveRecentRollRequiredPlayerIdsForDisplay(
   core: BetrayalCore,
   recentRoll: BetrayalRecentRollState | null | undefined,
 ): string[] {
@@ -71,7 +80,7 @@ export function resolveRecentRollRequiredPlayerIdsForDisplay(
   return resolveRecentRollRequiredPlayerIds(core, recentRoll);
 }
 
-export function resolveRecentRollAcknowledgedPlayerIdsForDisplay(
+function resolveRecentRollAcknowledgedPlayerIdsForDisplay(
   recentRoll: BetrayalRecentRollState | null | undefined,
 ): string[] {
   return recentRoll ? resolveRecentRollAcknowledgedPlayerIds(recentRoll) : [];
@@ -130,16 +139,61 @@ export function resolveEventRollConfirmationPresentation(
   };
 }
 
+export function resolveRecentRollAcknowledgementPresentation(
+  core: BetrayalCore,
+  viewerPlayerId: string,
+): RecentRollAcknowledgementPresentation {
+  const recentRollDecisionPlayerIds = new Set(
+    [core.currentPlayer, core.activePlayerId].filter(
+      (playerId): playerId is string => Boolean(playerId),
+    ),
+  );
+  const hasAcknowledgement = Boolean(
+    core.recentRoll &&
+      isAcknowledgeableRecentRollDisplay(core.recentRoll) &&
+      recentRollDecisionPlayerIds.has(core.recentRoll.playerId),
+  );
+  const requiredPlayerIds =
+    hasAcknowledgement && core.recentRoll
+      ? resolveRecentRollRequiredPlayerIdsForDisplay(core, core.recentRoll)
+      : [];
+  const acknowledgedPlayerIds =
+    hasAcknowledgement && core.recentRoll
+      ? resolveRecentRollAcknowledgedPlayerIdsForDisplay(core.recentRoll)
+      : [];
+  const confirmedCount = requiredPlayerIds.filter((playerId) =>
+    acknowledgedPlayerIds.includes(playerId),
+  ).length;
+  const totalCount = requiredPlayerIds.length;
+  const fullyAcknowledged = requiredPlayerIds.every((playerId) =>
+    acknowledgedPlayerIds.includes(playerId),
+  );
+  const hasAcknowledgeableRecentRoll =
+    hasAcknowledgement && !fullyAcknowledged;
+  const viewerHasAcknowledged = acknowledgedPlayerIds.includes(viewerPlayerId);
+  const canViewerAcknowledge = Boolean(
+    hasAcknowledgeableRecentRoll &&
+      requiredPlayerIds.includes(viewerPlayerId) &&
+      !viewerHasAcknowledged,
+  );
+
+  return {
+    hasAcknowledgement,
+    requiredPlayerIds,
+    acknowledgedPlayerIds,
+    confirmedCount,
+    totalCount,
+    fullyAcknowledged,
+    hasAcknowledgeableRecentRoll,
+    viewerHasAcknowledged,
+    canViewerAcknowledge,
+  };
+}
+
 export function resolveBetrayalRerollTargetBoxSize(
   layout: DicePhysicsProjectedLayout,
 ): number {
   const visibleWidth = layout.visualWidth ?? layout.width;
   const visibleHeight = layout.visualHeight ?? layout.height;
-  const longestVisibleSide = Math.max(visibleWidth, visibleHeight);
-  const paddedVisibleSize =
-    longestVisibleSide + BETRAYAL_REROLL_TARGET_MAX_HIT_PADDING * 2;
-  return Math.max(
-    longestVisibleSide,
-    Math.min(BETRAYAL_REROLL_TARGET_MIN_HIT_SIZE, paddedVisibleSize),
-  );
+  return Math.max(visibleWidth, visibleHeight);
 }

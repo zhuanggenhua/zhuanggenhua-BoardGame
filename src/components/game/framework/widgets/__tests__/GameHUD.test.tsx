@@ -17,12 +17,16 @@ vi.mock('../../../../../core', () => ({
 vi.mock('../../../../system/FabMenu', () => ({
     FabMenu: ({
         items,
+        position,
+        storageKey,
     }: {
         items: Array<{
             id: string;
             label: string;
             content?: React.ReactNode | ((context: { closePanel: () => void }) => React.ReactNode);
         }>;
+        position?: string;
+        storageKey?: string;
     }) => {
         const renderContent = (
             content?: React.ReactNode | ((context: { closePanel: () => void }) => React.ReactNode),
@@ -31,7 +35,11 @@ vi.mock('../../../../system/FabMenu', () => ({
             : content);
 
         return (
-            <div data-testid="fab-menu-stub">
+            <div
+                data-testid="fab-menu-stub"
+                data-fab-position={position}
+                data-fab-storage-key={storageKey}
+            >
                 {items.map((item) => (
                     <div key={item.id}>
                         <span data-testid={`fab-action-${item.id}`}>
@@ -297,6 +305,24 @@ describe('GameHUD', () => {
         );
 
         expect(screen.getByTestId('fab-menu-stub')).toBeInTheDocument();
+        expect(screen.getByTestId('fab-action-feedback')).toBeInTheDocument();
+        expect(screen.getByTestId('fab-action-display-theme')).toBeInTheDocument();
+    });
+
+    it('Mage Wars 游戏内悬浮菜单默认避开底部准备牌区', () => {
+        renderHud(
+            <GameHUD
+                mode="tutorial"
+                matchId="match-1"
+                gameId="mage-wars"
+                myPlayerId="0"
+                isPregameSetupPhase={false}
+            />,
+        );
+
+        const fabMenu = screen.getByTestId('fab-menu-stub');
+        expect(fabMenu).toHaveAttribute('data-fab-position', 'top-left');
+        expect(fabMenu).toHaveAttribute('data-fab-storage-key', 'game_hud_fab_position:mage-wars');
         expect(screen.getByTestId('fab-action-feedback')).toBeInTheDocument();
         expect(screen.getByTestId('fab-action-display-theme')).toBeInTheDocument();
     });

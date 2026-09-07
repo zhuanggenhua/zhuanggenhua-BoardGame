@@ -3,8 +3,8 @@ import { BETRAYAL_SCENARIO_CONFIGS } from './scenarioConfig';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type ScenarioCompletedEvent = Extract<BetrayalEvent, { type: 'SCENARIO_COMPLETED' }>;
 

@@ -1,9 +1,9 @@
 import { expect, test, type Page } from '@playwright/test';
 import {
-    BETRAYAL_COMMANDS,
     createBetrayalMonsterFromDefinition,
     type BetrayalCore,
 } from '../../src/games/betrayal/game';
+import { BETRAYAL_COMMANDS } from '../../src/games/betrayal/commands';
 import {
     resolveBetrayalMonsterMoveTargetRooms,
     resolveBetrayalMonsterMovementGroups,

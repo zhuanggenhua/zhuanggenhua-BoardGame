@@ -1,6 +1,6 @@
 import { mkdir } from 'node:fs/promises';
 import { dirname } from 'node:path';
-import { expect, test, type BrowserContext, type Page } from '@playwright/test';
+import { expect, test, type BrowserContext, type Locator, type Page } from '@playwright/test';
 import {
     assertNoFatalFrontendErrors,
     attachPageDiagnostics,
@@ -14,10 +14,29 @@ const DEFAULT_MAGE_SPACE_SCREENSHOT_PATH = 'test-results/evidence-screenshots/ma
 const SPELLBOOK_COPY_SELECTION_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-spellbook-copy-selection.png';
 const ATTACK_SETTLEMENT_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-attack-settlement.png';
 const SIX_PER_SIDE_LANE_WRAP_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-six-per-side-lane-wrap.png';
+const ACTION_TOKEN_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-action-token-state.png';
 const MOBILE_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-mobile-landscape-board.png';
 const DESKTOP_2560_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-board.png';
 const DESKTOP_2560_PLANNING_HOVER_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-planning-hover.png';
+const DESKTOP_2560_HUD_TOOLTIP_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-hud-stat-tooltip.png';
+const DESKTOP_2560_HUD_TOOLTIP_SCREENSHOT_DIR = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304';
 const DESKTOP_2560_DRAGGED_MAP_SCREENSHOT_PATH = 'test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-map-dragged.png';
+
+type MageHudTooltipTarget = {
+    owner: 'self' | 'opponent';
+    id: 'life' | 'mana' | 'channeling';
+    expectedText: string[];
+    fileName: string;
+};
+
+const MAGE_HUD_TOOLTIP_TARGETS: MageHudTooltipTarget[] = [
+    { owner: 'self', id: 'life', expectedText: ['生命', '/'], fileName: '01-self-life-tip.png' },
+    { owner: 'self', id: 'mana', expectedText: ['法力', '/'], fileName: '02-self-mana-tip.png' },
+    { owner: 'self', id: 'channeling', expectedText: ['聚魔', '/'], fileName: '03-self-channeling-tip.png' },
+    { owner: 'opponent', id: 'life', expectedText: ['生命', '/'], fileName: '04-opponent-life-tip.png' },
+    { owner: 'opponent', id: 'mana', expectedText: ['法力', '/'], fileName: '05-opponent-mana-tip.png' },
+    { owner: 'opponent', id: 'channeling', expectedText: ['聚魔', '/'], fileName: '06-opponent-channeling-tip.png' },
+];
 
 type MageWarsHarnessPlayer = {
     mageId: string;
@@ -73,6 +92,95 @@ function parseViewportTransformPosition(transform: string): { x: number; y: numb
         x: Number(match[1]),
         y: Number(match[2]),
     };
+}
+
+function getMageHudTooltipScreenshotPath(target: MageHudTooltipTarget): string {
+    return `${DESKTOP_2560_HUD_TOOLTIP_SCREENSHOT_DIR}/${target.fileName}`;
+}
+
+function getMageHudTooltipIconLocator(page: Page, target: MageHudTooltipTarget) {
+    const hudTestId = target.owner === 'self' ? 'mage-wars-mage-hud-self' : 'mage-wars-mage-hud-opponent';
+    return page.locator(`[data-testid="${hudTestId}"] [data-testid="mage-wars-mage-hud-stat-icon"][data-stat="${target.id}"]`);
+}
+
+async function expectMageHudTooltipVisibleInViewport(page: Page, target: MageHudTooltipTarget) {
+    const icon = getMageHudTooltipIconLocator(page, target);
+    await expect(icon, `${target.owner} ${target.id} HUD 图标必须可见`).toBeVisible({ timeout: 5_000 });
+    const iconBox = await icon.boundingBox();
+    expect(iconBox, `${target.owner} ${target.id} HUD 图标必须有真实屏幕坐标`).not.toBeNull();
+    await page.mouse.move(iconBox!.x + iconBox!.width / 2, iconBox!.y + iconBox!.height / 2);
+
+    const tooltip = icon.getByTestId('mage-wars-mage-hud-icon-tooltip');
+    await expect(tooltip, `${target.owner} ${target.id} HUD tooltip 必须存在`).toHaveCount(1);
+    for (const text of target.expectedText) {
+        await expect(tooltip, `${target.owner} ${target.id} HUD tooltip 必须包含 ${text}`).toContainText(text);
+    }
+    await expect.poll(
+        async () => Number(await tooltip.evaluate((element) => window.getComputedStyle(element).opacity)),
+        { message: `${target.owner} ${target.id} HUD tooltip 必须在截图前真正显现` },
+    ).toBeGreaterThan(0.95);
+
+    const viewport = await page.evaluate(() => ({ width: window.innerWidth, height: window.innerHeight }));
+    const tooltipBox = await tooltip.boundingBox();
+    expect(tooltipBox, `${target.owner} ${target.id} HUD tooltip 必须有可截图边界`).not.toBeNull();
+    expect(tooltipBox!.x, `${target.owner} ${target.id} HUD tooltip 不得被左侧裁切`).toBeGreaterThanOrEqual(0);
+    expect(tooltipBox!.y, `${target.owner} ${target.id} HUD tooltip 不得被顶部裁切`).toBeGreaterThanOrEqual(0);
+    expect(tooltipBox!.x + tooltipBox!.width, `${target.owner} ${target.id} HUD tooltip 不得被右侧裁切`).toBeLessThanOrEqual(viewport.width);
+    expect(tooltipBox!.y + tooltipBox!.height, `${target.owner} ${target.id} HUD tooltip 不得被底部裁切`).toBeLessThanOrEqual(viewport.height);
+
+    await page.screenshot({ path: getMageHudTooltipScreenshotPath(target), fullPage: false });
+    if (target.owner === 'self' && target.id === 'mana') {
+        await page.screenshot({ path: DESKTOP_2560_HUD_TOOLTIP_SCREENSHOT_PATH, fullPage: false });
+    }
+    await page.mouse.move(0, 0);
+    await expect.poll(
+        async () => Number(await tooltip.evaluate((element) => window.getComputedStyle(element).opacity)),
+        { message: `${target.owner} ${target.id} HUD tooltip 截图后应能正常退场` },
+    ).toBeLessThan(0.1);
+}
+
+async function captureMageHudTooltipScreenshots(page: Page) {
+    await mkdir(DESKTOP_2560_HUD_TOOLTIP_SCREENSHOT_DIR, { recursive: true });
+    await mkdir(dirname(DESKTOP_2560_HUD_TOOLTIP_SCREENSHOT_PATH), { recursive: true });
+    for (const target of MAGE_HUD_TOOLTIP_TARGETS) {
+        await expectMageHudTooltipVisibleInViewport(page, target);
+    }
+}
+
+async function expectEntityTokenRailInsideHostHorizontally(host: Locator, tokenTestId: string, label: string) {
+    const audit = await host.evaluate((element, selectedTokenTestId) => {
+        const toRect = (target: Element | null) => {
+            if (!target) return null;
+            const rect = target.getBoundingClientRect();
+            return {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+                right: rect.right,
+                bottom: rect.bottom,
+            };
+        };
+        const rail = element.querySelector<HTMLElement>('[data-testid="mage-wars-entity-status-token-rail"]');
+        const token = element.querySelector<HTMLElement>(`[data-testid="${selectedTokenTestId}"]`);
+        const hostRect = element.getBoundingClientRect();
+        const railRect = rail?.getBoundingClientRect();
+        const tokenRect = token?.getBoundingClientRect();
+        const isInsideHorizontally = (rect?: DOMRect) => Boolean(rect
+            && rect.left >= hostRect.left - 0.5
+            && rect.right <= hostRect.right + 0.5);
+
+        return {
+            hostRect: toRect(element),
+            railRect: toRect(rail),
+            tokenRect: toRect(token),
+            railInsideHorizontally: isInsideHorizontally(railRect),
+            tokenInsideHorizontally: isInsideHorizontally(tokenRect),
+        };
+    }, tokenTestId);
+
+    expect(audit.railInsideHorizontally, `${label} 的 token 容器必须在宿主内侧: ${JSON.stringify(audit)}`).toBe(true);
+    expect(audit.tokenInsideHorizontally, `${label} 本体必须在宿主内侧: ${JSON.stringify(audit)}`).toBe(true);
 }
 
 async function openMageWarsBoard(context: BrowserContext, page: Page, storageKey: string) {
@@ -164,7 +272,19 @@ async function clickVisibleMageWarsFieldCard(page: Page, objectId: string) {
         }
         element.scrollIntoView({ block: 'center', inline: 'center' });
     });
-    const clickablePoint = await card.evaluate((element) => {
+    const clickAudit = await card.evaluate((element) => {
+        const toRect = (target: Element | null) => {
+            if (!target) return null;
+            const rect = target.getBoundingClientRect();
+            return {
+                x: rect.x,
+                y: rect.y,
+                width: rect.width,
+                height: rect.height,
+                right: rect.right,
+                bottom: rect.bottom,
+            };
+        };
         const rect = element.getBoundingClientRect();
         const candidateRatios = [
             { x: 0.16, y: 0.5 },
@@ -179,16 +299,55 @@ async function clickVisibleMageWarsFieldCard(page: Page, objectId: string) {
         for (const ratio of candidateRatios) {
             const x = rect.left + rect.width * ratio.x;
             const y = rect.top + rect.height * ratio.y;
-            const hit = document.elementFromPoint(x, y)
-                ?.closest<HTMLElement>('[data-testid="mage-wars-zone-field-card"]');
+            const hitElement = document.elementFromPoint(x, y);
+            const hit = hitElement?.closest<HTMLElement>('[data-testid="mage-wars-zone-field-card"]');
             if (hit === element) {
-                return { x, y };
+                return { clickablePoint: { x, y }, debug: null };
             }
         }
-        return null;
+        const probeHits = candidateRatios.map((ratio) => {
+            const x = rect.left + rect.width * ratio.x;
+            const y = rect.top + rect.height * ratio.y;
+            const hitElement = document.elementFromPoint(x, y);
+            const hitTestElement = hitElement?.closest<HTMLElement>('[data-testid]');
+            const hitFieldCard = hitElement?.closest<HTMLElement>('[data-testid="mage-wars-zone-field-card"]');
+            return {
+                ratio,
+                x,
+                y,
+                hitTestId: hitTestElement?.dataset.testid ?? null,
+                hitObjectId: hitFieldCard?.dataset.objectId ?? null,
+                hitOwnerSide: hitFieldCard?.dataset.ownerSide ?? null,
+            };
+        });
+        return {
+            clickablePoint: null,
+            debug: {
+                target: {
+                    objectId: element.dataset.objectId ?? null,
+                    rect: toRect(element),
+                    laneRect: toRect(element.closest('[data-lane-owner-side]')),
+                    laneScrollTop: element.closest<HTMLElement>('[data-lane-owner-side]')?.scrollTop ?? null,
+                },
+                probeHits,
+                selfHud: toRect(document.querySelector('[data-testid="mage-wars-mage-hud-self"]')),
+                opponentHud: toRect(document.querySelector('[data-testid="mage-wars-mage-hud-opponent"]')),
+                laneItems: Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mage-wars-zone-lane-item"]')).map((item) => {
+                    const field = item.querySelector<HTMLElement>('[data-testid="mage-wars-zone-field-card"]');
+                    return {
+                        kind: item.dataset.laneItemKind ?? null,
+                        index: item.dataset.laneItemIndex ?? null,
+                        objectId: field?.dataset.objectId ?? null,
+                        rect: toRect(item),
+                        fieldRect: toRect(field),
+                        zIndex: getComputedStyle(item).zIndex,
+                    };
+                }),
+            },
+        };
     });
-    expect(clickablePoint, `${objectId} 必须有露出且可点击的牌面区域`).not.toBeNull();
-    await page.mouse.click(clickablePoint!.x, clickablePoint!.y);
+    expect(clickAudit.clickablePoint, `${objectId} 必须有露出且可点击的牌面区域: ${JSON.stringify(clickAudit.debug)}`).not.toBeNull();
+    await page.mouse.click(clickAudit.clickablePoint!.x, clickAudit.clickablePoint!.y);
 }
 
 async function captureMageWarsSixPerSideLaneWrapScreenshot(page: Page) {
@@ -246,13 +405,38 @@ async function captureMageWarsSixPerSideLaneWrapScreenshot(page: Page) {
             fieldCards: Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mage-wars-zone-field-card"]')).map((card) => {
                 const rect = card.getBoundingClientRect();
                 const zone = card.closest<HTMLElement>('[data-testid^="mage-wars-arena-zone-"]');
+                const hitRatios = [
+                    { x: 0.16, y: 0.5 },
+                    { x: 0.84, y: 0.5 },
+                    { x: 0.5, y: 0.5 },
+                    { x: 0.24, y: 0.28 },
+                    { x: 0.24, y: 0.72 },
+                    { x: 0.76, y: 0.28 },
+                    { x: 0.76, y: 0.72 },
+                ];
+                const hitSamples = hitRatios.map((ratio) => {
+                    const x = rect.left + rect.width * ratio.x;
+                    const y = rect.top + rect.height * ratio.y;
+                    const hit = document.elementFromPoint(x, y);
+                    const hitFieldCard = hit?.closest<HTMLElement>('[data-testid="mage-wars-zone-field-card"]') ?? null;
+                    const hitTestElement = hit?.closest<HTMLElement>('[data-testid]') ?? null;
+                    return {
+                        ratio,
+                        hitTestId: hitTestElement?.dataset.testid ?? null,
+                        hitObjectId: hitFieldCard?.dataset.objectId ?? null,
+                        hitsSelf: hitFieldCard === card,
+                    };
+                });
                 return {
+                    objectId: card.dataset.objectId ?? null,
                     ownerSide: card.dataset.ownerSide ?? null,
                     zoneId: zone?.getAttribute('data-testid')?.replace('mage-wars-arena-zone-', '') ?? null,
                     rect: toRect(card),
                     centerX: rect.x + rect.width / 2,
                     centerY: rect.y + rect.height / 2,
                     aspectRatio: rect.height > 0 ? rect.width / rect.height : null,
+                    hitSamples,
+                    clickableSampleCount: hitSamples.filter((sample) => sample.hitsSelf).length,
                 };
             }).filter((card) => card.zoneId === 'a2'),
         };
@@ -369,6 +553,19 @@ async function captureMageWarsSixPerSideLaneWrapScreenshot(page: Page) {
         expect(card.rect!.height).toBeLessThan(160);
         expect(card.aspectRatio).toBeGreaterThan(0.70);
         expect(card.aspectRatio).toBeLessThan(0.72);
+    });
+    const redAngel = laneWrapAudit.fieldCards.find((card) => card.objectId === 'mw-test-red-angel');
+    expect(redAngel, `A2 当前可操作灰天使必须存在: ${JSON.stringify(laneWrapAudit.fieldCards)}`).toBeTruthy();
+    expect(
+        redAngel!.clickableSampleCount,
+        `HUD 视觉覆盖时，灰天使主体点击点仍必须命中场上对象，不能被 HUD 提示卡 / 属性图标吞掉: ${JSON.stringify(redAngel)}`,
+    ).toBeGreaterThan(0);
+    redAngel!.hitSamples.forEach((sample) => {
+        if (sample.hitsSelf) return;
+        expect(
+            ['mage-wars-mage-hud-hint-card', 'mage-wars-mage-hud-stat-icon'],
+            `灰天使主体点击点不应命中 HUD: ${JSON.stringify(sample)}`,
+        ).not.toContain(sample.hitTestId);
     });
 
     await mkdir(dirname(SIX_PER_SIDE_LANE_WRAP_SCREENSHOT_PATH), { recursive: true });
@@ -676,6 +873,12 @@ async function expectMageWarsDesktop2560Layout(page: Page) {
             rect: toRect(document.querySelector<HTMLElement>(`[data-testid="mage-wars-spellbook-category-${id}"]`)),
             pressed: document.querySelector<HTMLElement>(`[data-testid="mage-wars-spellbook-category-${id}"]`)
                 ?.getAttribute('aria-pressed') ?? null,
+            scrollWidth: document.querySelector<HTMLElement>(`[data-testid="mage-wars-spellbook-category-${id}"]`)?.scrollWidth ?? null,
+            clientWidth: document.querySelector<HTMLElement>(`[data-testid="mage-wars-spellbook-category-${id}"]`)?.clientWidth ?? null,
+            whiteSpace: (() => {
+                const element = document.querySelector<HTMLElement>(`[data-testid="mage-wars-spellbook-category-${id}"]`);
+                return element ? getComputedStyle(element).whiteSpace : null;
+            })(),
         }));
         const arenaZones = Array.from(document.querySelectorAll<HTMLElement>('[data-testid^="mage-wars-arena-zone-"]'))
             .map((zone) => {
@@ -714,6 +917,18 @@ async function expectMageWarsDesktop2560Layout(page: Page) {
             hudAnchorLayoutSource: document
                 .querySelector<HTMLElement>('[data-testid="mage-wars-hud-anchor-layer"]')
                 ?.getAttribute('data-mage-wars-layout-source') ?? null,
+            hudAnchorPointerEvents: (() => {
+                const element = document.querySelector<HTMLElement>('[data-testid="mage-wars-hud-anchor-layer"]');
+                return element ? getComputedStyle(element).pointerEvents : null;
+            })(),
+            selfHudPointerEvents: (() => {
+                const element = document.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-self"]');
+                return element ? getComputedStyle(element).pointerEvents : null;
+            })(),
+            selfHudLayoutPosition: document
+                .querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-self"]')
+                ?.closest<HTMLElement>('[data-layout-position]')
+                ?.getAttribute('data-layout-position') ?? null,
             bottomGridLayoutSource: document
                 .querySelector<HTMLElement>('[data-testid="mage-wars-bottom-viewport-grid"]')
                 ?.getAttribute('data-mage-wars-layout-source') ?? null,
@@ -778,6 +993,9 @@ async function expectMageWarsDesktop2560Layout(page: Page) {
         expect(rect!.bottom, `${name} bottom`).toBeLessThanOrEqual(layoutAudit.viewport.height + 1);
     });
     expect(layoutAudit.hudAnchorLayoutSource).toBe('viewport-anchored');
+    expect(layoutAudit.hudAnchorPointerEvents, 'HUD 锚点层外壳不应吞掉棋盘 / 牌桌输入').toBe('none');
+    expect(layoutAudit.selfHudPointerEvents, '己方 HUD 外壳不应吞掉非控件输入').toBe('none');
+    expect(layoutAudit.selfHudLayoutPosition, '己方 HUD 必须保持左下顶层锚点，不再按 A2 / 场上实体启用避让态').toBe('self-lower-left');
     expect(layoutAudit.bottomGridLayoutSource).toBe('viewport-grid-anchored');
     expect(layoutAudit.legacyScaledHudLayerCount).toBe(0);
     expect(layoutAudit.rects.hudAnchorLayer!.x, '玩家界面锚点层必须贴齐屏幕左边，不能套 16:9 内框').toBeLessThanOrEqual(1);
@@ -789,8 +1007,12 @@ async function expectMageWarsDesktop2560Layout(page: Page) {
     expect(bottomViewportGridGap, '底部法术书牌列和计划区不能被整体上移成底部空带').toBeLessThanOrEqual(16);
     layoutAudit.categoryButtons.forEach((category) => {
         expect(category.rect, `${category.id} category tab`).not.toBeNull();
-        expect(category.rect!.width).toBeGreaterThanOrEqual(44);
-        expect(category.rect!.height).toBeGreaterThanOrEqual(24);
+        expect(category.rect!.width, `${category.id} category tab must render as a readable button, not a tiny label`).toBeGreaterThanOrEqual(72);
+        expect(category.rect!.height, `${category.id} category tab must keep a readable hit face`).toBeGreaterThanOrEqual(30);
+        expect(category.whiteSpace, `${category.id} category tab must stay on one line`).toBe('nowrap');
+        expect(category.scrollWidth, `${category.id} category tab text must not be clipped`).not.toBeNull();
+        expect(category.clientWidth, `${category.id} category tab text must not be clipped`).not.toBeNull();
+        expect(category.scrollWidth!, `${category.id} category tab text must fit its visible button`).toBeLessThanOrEqual(category.clientWidth! + 1);
     });
     const centerDebug = JSON.stringify({
         board: layoutAudit.rects.board,
@@ -804,11 +1026,12 @@ async function expectMageWarsDesktop2560Layout(page: Page) {
     expect(layoutAudit.lifeToggleLeftGap!).toBeLessThanOrEqual(160);
     expect(Math.abs(layoutAudit.rects.spellbookShelf!.bottom - layoutAudit.rects.preparedArea!.bottom)).toBeLessThanOrEqual(3);
     expect(Math.abs(layoutAudit.rects.firstSpellbookCard!.bottom - layoutAudit.rects.preparedCard!.bottom)).toBeLessThanOrEqual(3);
-    expect(layoutAudit.rects.selfHud!.x, '己方 HUD 必须留在左半区，但要避开竞技场首列实体').toBeGreaterThanOrEqual(layoutAudit.viewport.width * 0.24);
-    expect(layoutAudit.rects.selfHud!.x, '己方 HUD 不得漂到中场或右侧玩家区').toBeLessThanOrEqual(layoutAudit.viewport.width * 0.36);
-    expect(layoutAudit.rects.selfHud!.y, '己方 HUD 必须在左下独立层，不应回到左上角').toBeGreaterThan(layoutAudit.viewport.height * 0.25);
-    expect(layoutAudit.rects.selfHud!.bottom, '己方 HUD 应靠近左下桌面区，而不是顶部 HUD 带').toBeGreaterThan(layoutAudit.viewport.height * 0.55);
-    expect(layoutAudit.rects.selfHud!.bottom, '己方 HUD 必须离开底部牌区，不能再占法术书列宽度').toBeLessThan(layoutAudit.rects.bottomViewportGrid!.y);
+    expect(layoutAudit.rects.selfHud!.x, '己方 HUD 必须贴左下顶层服务区，不能预留无职责大空白').toBeGreaterThanOrEqual(0);
+    expect(layoutAudit.rects.selfHud!.x, '己方 HUD 不能启用按场上实体驱动的大比例安全偏移').toBeLessThanOrEqual(32);
+    expect(layoutAudit.rects.selfHud!.right, '己方 HUD 集群不得越过桌面中线').toBeLessThan(layoutAudit.viewport.width * 0.52);
+    expect(layoutAudit.rects.selfHud!.y, '己方 HUD 必须处在左下独立层，不得回到左上工具带').toBeGreaterThan(layoutAudit.viewport.height * 0.2);
+    expect(layoutAudit.rects.selfHud!.bottom, '己方 HUD 必须离开底部牌区，不能再占法术书列宽度').toBeLessThanOrEqual(layoutAudit.rects.firstSpellbookCard!.y - 6);
+    expect(layoutAudit.rects.firstSpellbookCard!.y - layoutAudit.rects.selfHud!.bottom, '己方 HUD 必须贴近左下牌桌区，不能悬到中场').toBeLessThanOrEqual(32);
     expect(layoutAudit.rects.opponentHud!.right).toBeGreaterThanOrEqual(layoutAudit.viewport.width - 20);
     expect(layoutAudit.rects.opponentHud!.y).toBeLessThanOrEqual(80);
     expect(layoutAudit.rects.opponentPreparedMirror!.x, '对手已计划卡背必须在右上对手 HUD 左侧，不应留在左上角').toBeGreaterThan(layoutAudit.viewport.width * 0.5);
@@ -937,7 +1160,7 @@ async function applyMageWarsSaturatedState(page: Page) {
             life: 6,
             damage: index === 7 ? 2 : 0,
             armor: 0,
-            actionReady: true,
+            actionReady: object.id === 'mw-test-red-creature' ? false : true,
             guarding: false,
             combatProfilesSource: 'config',
             statusTokens: index === 7 ? { burn: 1 } : {},
@@ -1120,6 +1343,84 @@ async function applyMageWarsCombatFocusState(page: Page) {
 }
 
 test.describe('Mage Wars foundation runtime board', () => {
+    test('真实入口用行动 token 表示已消耗生物且不置灰', async ({ context, page }) => {
+        test.setTimeout(60_000);
+        await page.setViewportSize({ width: 1920, height: 1080 });
+        const diagnostics = await openMageWarsBoard(context, page, 'mage-wars-action-token-state');
+        await applyMageWarsSaturatedState(page);
+
+        const spentCreature = page.locator('[data-testid="mage-wars-zone-field-card"][data-object-id="mw-test-red-creature"]');
+        await expect(spentCreature).toBeVisible({ timeout: 10_000 });
+        await expect(spentCreature).toHaveAttribute('data-action-ready', 'false');
+        await expect(spentCreature).toHaveAttribute('data-action-token-state', 'spent');
+        await expect(spentCreature).not.toHaveAttribute('data-visual-action-state', 'spent');
+        await expect(spentCreature).not.toHaveClass(/grayscale/);
+        await expect(spentCreature).not.toHaveClass(/opacity-55/);
+        await expect(spentCreature).not.toHaveClass(/brightness-75/);
+        await expect(spentCreature).not.toHaveClass(/saturate-50/);
+        const spentActionToken = spentCreature.locator('[data-testid="mage-wars-action-token-slot"]');
+        await expect(spentActionToken).toHaveAttribute('data-action-token-position', 'entity-left-inside-midline');
+        await expect(spentActionToken).toHaveAttribute('data-action-token-image-key', /ready-token-back/);
+        await expect(spentActionToken.locator('xpath=ancestor::*[@data-testid="mage-wars-entity-status-token-rail"][1]'))
+            .toHaveAttribute('data-token-rail-axis', 'vertical');
+        await expect.poll(async () => spentActionToken.locator('img').evaluate((image: HTMLImageElement) => (
+            image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+        ))).toBe(true);
+        const spentActionTokenOverlapsLifeReadout = await spentCreature.evaluate((card) => {
+            const token = card.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"]');
+            const life = card.querySelector<HTMLElement>('[data-testid="mage-wars-field-card-life-readout-text"]');
+            if (!token || !life) return false;
+            const tokenRect = token.getBoundingClientRect();
+            const lifeRect = life.getBoundingClientRect();
+            return tokenRect.left < lifeRect.right
+                && tokenRect.right > lifeRect.left
+                && tokenRect.top < lifeRect.bottom
+                && tokenRect.bottom > lifeRect.top;
+        });
+        expect(spentActionTokenOverlapsLifeReadout, '行动 token 不得遮住生物生命读数').toBe(false);
+        await expectEntityTokenRailInsideHostHorizontally(spentCreature, 'mage-wars-action-token-slot', '已消耗生物行动 token');
+
+        const readyCreature = page.locator('[data-testid="mage-wars-zone-field-card"][data-object-id="mw-test-red-angel"]');
+        await expect(readyCreature).toBeVisible({ timeout: 10_000 });
+        await expect(readyCreature).toHaveAttribute('data-action-ready', 'true');
+        await expect(readyCreature).toHaveAttribute('data-action-token-state', 'ready');
+        await expect(readyCreature).not.toHaveAttribute('data-visual-action-state', 'spent');
+        const readyActionToken = readyCreature.locator('[data-testid="mage-wars-action-token-slot"]');
+        await expect(readyActionToken).toHaveAttribute('data-action-token-position', 'entity-left-inside-midline');
+        await expect(readyActionToken).toHaveAttribute('data-action-token-image-key', /ready-token-front/);
+        await expect.poll(async () => readyActionToken.locator('img').evaluate((image: HTMLImageElement) => (
+            image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+        ))).toBe(true);
+        await expectEntityTokenRailInsideHostHorizontally(readyCreature, 'mage-wars-action-token-slot', '就绪生物行动 token');
+
+        await expect(page.locator('[data-testid="mage-wars-mage-hud-token-icon"]')).toHaveCount(0);
+        await expect(page.getByTestId('mage-wars-mage-hud-current-badge').locator('img')).toHaveCount(0);
+        const selfMageEntity = page.locator('[data-testid="mage-wars-zone-mage-entity"][data-player-id="0"]').first();
+        await expect(selfMageEntity).toBeVisible({ timeout: 10_000 });
+        await expect(selfMageEntity).toHaveAttribute('data-action-token-state', 'ready');
+        await expect(selfMageEntity).toHaveAttribute('data-quickcast-token-state', 'ready');
+        const selfMageActionToken = selfMageEntity.locator('[data-testid="mage-wars-action-token-slot"]');
+        await expect(selfMageActionToken).toHaveAttribute('data-action-token-position', 'entity-left-inside-midline');
+        const selfMageQuickcastToken = selfMageEntity.locator('[data-testid="mage-wars-quickcast-token-slot"]');
+        await expect(selfMageQuickcastToken).toHaveAttribute('data-quickcast-token-position', 'entity-left-inside-midline');
+        await expect(selfMageActionToken.locator('xpath=ancestor::*[@data-testid="mage-wars-entity-status-token-rail"][1]'))
+            .toHaveAttribute('data-token-rail-layout', 'stack');
+        await expect(selfMageActionToken.locator('xpath=ancestor::*[@data-testid="mage-wars-entity-status-token-rail"][1]'))
+            .toHaveAttribute('data-token-rail-position', 'entity-left-inside-midline');
+        await expect.poll(async () => selfMageActionToken.locator('img').evaluate((image: HTMLImageElement) => (
+            image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+        ))).toBe(true);
+        await expect.poll(async () => selfMageQuickcastToken.locator('img').evaluate((image: HTMLImageElement) => (
+            image.complete && image.naturalWidth > 0 && image.naturalHeight > 0
+        ))).toBe(true);
+        await expectEntityTokenRailInsideHostHorizontally(selfMageEntity, 'mage-wars-action-token-slot', '法师行动 token');
+        await expectEntityTokenRailInsideHostHorizontally(selfMageEntity, 'mage-wars-quickcast-token-slot', '法师快速施法 token');
+
+        await mkdir(dirname(ACTION_TOKEN_SCREENSHOT_PATH), { recursive: true });
+        await page.screenshot({ path: ACTION_TOKEN_SCREENSHOT_PATH, fullPage: false });
+        await assertNoFatalFrontendErrors([{ label: 'mage-wars-action-token-state', diagnostics }]);
+    });
+
     test('真实入口加载正式牌桌素材并落桌面验收截图', async ({ context, page }) => {
         test.setTimeout(90_000);
         await page.setViewportSize({ width: 1920, height: 1080 });
@@ -1291,6 +1592,7 @@ test.describe('Mage Wars foundation runtime board', () => {
         await expect(page.getByTestId('mage-wars-prepared-source-badge')).toHaveCount(0);
         await expect(page.getByTestId('mage-wars-prepared-source-frame').first()).toBeVisible();
         await expect(page.getByTestId('mage-wars-mage-hud-current-badge')).toHaveText(/行动中/);
+        await expect(page.getByTestId('mage-wars-mage-hud-current-badge').locator('img')).toHaveCount(0);
         await expect(page.getByTestId('mage-wars-mage-hud-active-hint')).toHaveCount(0);
         await expect(page.getByTestId('mage-wars-desktop-settlement-overlay')).toHaveCount(0);
         await expect(page.getByTestId('mage-wars-dice-tray')).toHaveCount(0);
@@ -1473,6 +1775,13 @@ test.describe('Mage Wars foundation runtime board', () => {
                     ? Array.from(zone.querySelectorAll<HTMLElement>('[data-testid="mage-wars-zone-field-card"]'))
                     : [];
                 const lifeReadout = occupant.querySelector<HTMLElement>('[data-testid="mage-wars-mage-entity-life-readout"]');
+                const lifeReadoutText = occupant.querySelector<HTMLElement>('[data-testid="mage-wars-mage-entity-life-readout-text"]');
+                const actionTokenSlot = occupant.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"]');
+                const actionTokenImage = actionTokenSlot?.querySelector<HTMLImageElement>('img');
+                const quickcastTokenSlot = occupant.querySelector<HTMLElement>('[data-testid="mage-wars-quickcast-token-slot"]');
+                const quickcastTokenImage = quickcastTokenSlot?.querySelector<HTMLImageElement>('img');
+                const guardTokenSlot = occupant.querySelector<HTMLElement>('[data-testid="mage-wars-guard-token-slot"]');
+                const statusTokenRail = occupant.querySelector<HTMLElement>('[data-testid="mage-wars-entity-status-token-rail"]');
                 const centerX = rect.x + rect.width / 2;
                 const centerY = rect.y + rect.height / 2;
                 const topElement = document.elementFromPoint(centerX, centerY);
@@ -1509,7 +1818,35 @@ test.describe('Mage Wars foundation runtime board', () => {
                     overlapsSpellbookShelf: spellbookShelf ? overlaps(occupant, spellbookShelf) : false,
                     hasDamageOverlay: Boolean(occupant.querySelector('[data-testid="mage-wars-mage-entity-damage-overlay"]')),
                     hasDamageValueBadge: Boolean(occupant.querySelector('[data-testid="mage-wars-mage-entity-damage-overlay-value"]')),
-                    lifeReadoutText: lifeReadout?.textContent ?? null,
+                    actionReady: occupant.dataset.actionReady ?? null,
+                    actionTokenState: occupant.dataset.actionTokenState ?? null,
+                    actionTokenPosition: actionTokenSlot?.dataset.actionTokenPosition ?? null,
+                    actionTokenImageKey: actionTokenSlot?.dataset.actionTokenImageKey ?? '',
+                    actionTokenImageLoaded: Boolean(
+                        actionTokenImage?.complete
+                        && actionTokenImage.naturalWidth > 0
+                        && actionTokenImage.naturalHeight > 0,
+                    ),
+                    quickcastReady: occupant.dataset.quickcastReady ?? null,
+                    quickcastTokenState: occupant.dataset.quickcastTokenState ?? null,
+                    quickcastTokenPosition: quickcastTokenSlot?.dataset.quickcastTokenPosition ?? null,
+                    quickcastTokenImageKey: quickcastTokenSlot?.dataset.quickcastTokenImageKey ?? '',
+                    quickcastTokenImageLoaded: Boolean(
+                        quickcastTokenImage?.complete
+                        && quickcastTokenImage.naturalWidth > 0
+                        && quickcastTokenImage.naturalHeight > 0,
+                    ),
+                    guardTokenPosition: guardTokenSlot?.dataset.guardTokenPosition ?? null,
+                    tokenRailPosition: statusTokenRail?.dataset.tokenRailPosition ?? null,
+                    tokenRailAxis: statusTokenRail?.dataset.tokenRailAxis ?? null,
+                    tokenRailPlacement: statusTokenRail?.dataset.tokenRailPlacement ?? null,
+                    tokenRailLayout: statusTokenRail?.dataset.tokenRailLayout ?? null,
+                    tokenRailRect: toRect(statusTokenRail),
+                    actionTokenRect: toRect(actionTokenSlot),
+                    quickcastTokenRect: toRect(quickcastTokenSlot),
+                    guardTokenRect: toRect(guardTokenSlot),
+                    lifeReadoutRect: toRect(lifeReadoutText),
+                    lifeReadoutText: lifeReadoutText?.textContent ?? null,
                     lifeRemaining: lifeReadout?.dataset.lifeRemaining ?? null,
                     lifeVisible: lifeReadout?.dataset.lifeVisible ?? null,
                 };
@@ -1525,6 +1862,11 @@ test.describe('Mage Wars foundation runtime board', () => {
                 const cardArea = cardRect.width * cardRect.height;
                 const ownZoneArea = zoneRect ? overlapArea(cardRect, zoneRect) : 0;
                 const lifeReadout = card.querySelector<HTMLElement>('[data-testid="mage-wars-field-card-life-readout"]');
+                const lifeReadoutText = card.querySelector<HTMLElement>('[data-testid="mage-wars-field-card-life-readout-text"]');
+                const actionTokenSlot = card.querySelector<HTMLElement>('[data-testid="mage-wars-action-token-slot"]');
+                const actionTokenImage = actionTokenSlot?.querySelector<HTMLImageElement>('img');
+                const guardTokenSlot = card.querySelector<HTMLElement>('[data-testid="mage-wars-guard-token-slot"]');
+                const statusTokenRail = card.querySelector<HTMLElement>('[data-testid="mage-wars-entity-status-token-rail"]');
                 const maxOtherZoneCoverage = Math.max(0, ...arenaZones
                     .filter((candidate) => candidate !== zone)
                     .map((candidate) => {
@@ -1545,10 +1887,31 @@ test.describe('Mage Wars foundation runtime board', () => {
                     centerY: cardRect.y + cardRect.height / 2,
                     zoneCoverage: cardArea > 0 ? ownZoneArea / cardArea : 0,
                     maxOtherZoneCoverage,
+                    objectId: card.dataset.objectId ?? null,
+                    actionReady: card.dataset.actionReady ?? null,
+                    actionTokenState: card.dataset.actionTokenState ?? null,
+                    visualActionState: card.dataset.visualActionState ?? null,
+                    className: card.className,
+                    actionTokenPosition: actionTokenSlot?.dataset.actionTokenPosition ?? null,
+                    actionTokenImageKey: actionTokenSlot?.dataset.actionTokenImageKey ?? '',
+                    actionTokenImageSrc: actionTokenImage?.getAttribute('src') ?? '',
+                    actionTokenImageLoaded: Boolean(
+                        actionTokenImage?.complete
+                        && actionTokenImage.naturalWidth > 0
+                        && actionTokenImage.naturalHeight > 0,
+                    ),
+                    guardTokenPosition: guardTokenSlot?.dataset.guardTokenPosition ?? null,
+                    tokenRailPosition: statusTokenRail?.dataset.tokenRailPosition ?? null,
+                    tokenRailAxis: statusTokenRail?.dataset.tokenRailAxis ?? null,
+                    tokenRailPlacement: statusTokenRail?.dataset.tokenRailPlacement ?? null,
+                    tokenRailRect: toRect(statusTokenRail),
+                    actionTokenRect: toRect(actionTokenSlot),
+                    guardTokenRect: toRect(guardTokenSlot),
+                    lifeReadoutRect: toRect(lifeReadoutText),
                     visualDamage: Number(card.dataset.visualDamage ?? 0),
                     hasDamageOverlay: Boolean(card.querySelector('[data-testid="mage-wars-field-card-damage-overlay"]')),
                     hasDamageValueBadge: Boolean(card.querySelector('[data-testid="mage-wars-field-card-damage-overlay-value"]')),
-                    lifeReadoutText: lifeReadout?.textContent ?? null,
+                    lifeReadoutText: lifeReadoutText?.textContent ?? null,
                     lifeRemaining: lifeReadout?.dataset.lifeRemaining ?? null,
                     lifeVisible: lifeReadout?.dataset.lifeVisible ?? null,
                 };
@@ -1561,6 +1924,11 @@ test.describe('Mage Wars foundation runtime board', () => {
                 hudAnchorLayer: toRect(hudAnchorLayer),
                 bottomViewportGrid: toRect(document.querySelector<HTMLElement>('[data-testid="mage-wars-bottom-viewport-grid"]')),
                 hudAnchorLayoutSource: hudAnchorLayer?.getAttribute('data-mage-wars-layout-source') ?? null,
+                hudAnchorPointerEvents: hudAnchorLayer ? getComputedStyle(hudAnchorLayer).pointerEvents : null,
+                selfHudPointerEvents: selfHud ? getComputedStyle(selfHud).pointerEvents : null,
+                selfHudLayoutPosition: selfHud
+                    ?.closest<HTMLElement>('[data-layout-position]')
+                    ?.getAttribute('data-layout-position') ?? null,
                 bottomGridLayoutSource: document
                     .querySelector<HTMLElement>('[data-testid="mage-wars-bottom-viewport-grid"]')
                     ?.getAttribute('data-mage-wars-layout-source') ?? null,
@@ -1578,20 +1946,33 @@ test.describe('Mage Wars foundation runtime board', () => {
                 opponentHud: toRect(opponentHud),
                 selfHudDensity: selfHud?.dataset.mageWarsHudDensity ?? null,
                 opponentHudDensity: opponentHud?.dataset.mageWarsHudDensity ?? null,
-                mageHudHintCards: mageHudHintCards.map((hintCard) => ({
-                    owner: hintCard.closest('[data-testid="mage-wars-mage-hud-self"]')
-                        ? 'self'
-                        : hintCard.closest('[data-testid="mage-wars-mage-hud-opponent"]')
-                            ? 'opponent'
-                            : 'unknown',
-                    rect: toRect(hintCard),
-                    aspectRatio: (() => {
-                        const rect = hintCard.getBoundingClientRect();
-                        return rect.height > 0 ? rect.width / rect.height : null;
-                    })(),
-                    previewKind: hintCard.dataset.magePreviewKind,
-                    uiRole: hintCard.dataset.mageUiRole,
-                })),
+                mageHudHintCards: mageHudHintCards.map((hintCard) => {
+                    const inspectButton = hintCard.querySelector<HTMLElement>('[data-testid="mage-wars-card-inspect-button"]');
+                    const inspectButtonRect = inspectButton?.getBoundingClientRect();
+                    const inspectButtonHit = inspectButtonRect
+                        ? document.elementFromPoint(inspectButtonRect.left + inspectButtonRect.width / 2, inspectButtonRect.top + inspectButtonRect.height / 2)
+                        : null;
+                    return {
+                        owner: hintCard.closest('[data-testid="mage-wars-mage-hud-self"]')
+                            ? 'self'
+                            : hintCard.closest('[data-testid="mage-wars-mage-hud-opponent"]')
+                                ? 'opponent'
+                                : 'unknown',
+                        rect: toRect(hintCard),
+                        aspectRatio: (() => {
+                            const rect = hintCard.getBoundingClientRect();
+                            return rect.height > 0 ? rect.width / rect.height : null;
+                        })(),
+                        previewKind: hintCard.dataset.magePreviewKind,
+                        uiRole: hintCard.dataset.mageUiRole,
+                        hitSurface: hintCard.dataset.hudHitSurface ?? null,
+                        pointerEvents: getComputedStyle(hintCard).pointerEvents,
+                        role: hintCard.getAttribute('role'),
+                        tabIndex: hintCard.getAttribute('tabindex'),
+                        inspectButtonCount: hintCard.querySelectorAll('[data-testid="mage-wars-card-inspect-button"]').length,
+                        inspectButtonHit: inspectButtonHit?.closest('[data-testid="mage-wars-card-inspect-button"]') === inspectButton,
+                    };
+                }),
                 legacyMageHudStatGridCount: legacyMageHudStatGrids.length,
                 legacyMageHudStatBarCount: legacyMageHudStatBars.length,
                 mageHudIconRails: mageHudIconRails.map((rail) => {
@@ -1603,6 +1984,7 @@ test.describe('Mage Wars foundation runtime board', () => {
                             : 'unknown';
                     return {
                         owner,
+                        align: rail.dataset.hudIconRailAlign ?? null,
                         width: rect.width,
                         height: rect.height,
                         x: rect.x,
@@ -1613,7 +1995,9 @@ test.describe('Mage Wars foundation runtime board', () => {
                 }),
                 mageHudStatIcons: mageHudStatIcons.map((icon) => {
                     const rect = icon.getBoundingClientRect();
+                    const style = getComputedStyle(icon);
                     const value = icon.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-stat-value"]');
+                    const glyph = icon.querySelector<SVGElement>('[data-stat-glyph-kind]');
                     const owner = icon.closest('[data-testid="mage-wars-mage-hud-self"]')
                         ? 'self'
                         : icon.closest('[data-testid="mage-wars-mage-hud-opponent"]')
@@ -1622,10 +2006,19 @@ test.describe('Mage Wars foundation runtime board', () => {
                     return {
                         owner,
                         stat: icon.dataset.stat ?? null,
+                        frame: icon.dataset.hudIconFrame ?? null,
+                        hitSurface: icon.dataset.hudHitSurface ?? null,
+                        tooltipTrigger: icon.dataset.hudIconTooltipTrigger ?? null,
+                        tooltipText: icon.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-icon-tooltip"]')?.textContent?.trim() ?? '',
+                        glyph: glyph?.dataset.statGlyphKind ?? null,
                         value: icon.dataset.statValue ?? null,
                         max: icon.dataset.statMax ?? null,
                         fillPercent: Number.parseFloat(icon.dataset.fillPercent ?? 'NaN'),
                         valueText: value?.textContent?.trim() ?? '',
+                        backgroundColor: style.backgroundColor,
+                        pointerEvents: style.pointerEvents,
+                        borderTopWidth: style.borderTopWidth,
+                        boxShadow: style.boxShadow,
                         width: rect.width,
                         height: rect.height,
                         x: rect.x,
@@ -1636,6 +2029,7 @@ test.describe('Mage Wars foundation runtime board', () => {
                 }),
                 mageHudTokenIcons: mageHudTokenIcons.map((icon) => {
                     const rect = icon.getBoundingClientRect();
+                    const style = getComputedStyle(icon);
                     const owner = icon.closest('[data-testid="mage-wars-mage-hud-self"]')
                         ? 'self'
                         : icon.closest('[data-testid="mage-wars-mage-hud-opponent"]')
@@ -1644,6 +2038,12 @@ test.describe('Mage Wars foundation runtime board', () => {
                     return {
                         owner,
                         kind: icon.dataset.tokenKind ?? null,
+                        frame: icon.dataset.hudIconFrame ?? null,
+                        tooltipTrigger: icon.dataset.hudIconTooltipTrigger ?? null,
+                        tooltipText: icon.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-icon-tooltip"]')?.textContent?.trim() ?? '',
+                        backgroundColor: style.backgroundColor,
+                        borderTopWidth: style.borderTopWidth,
+                        boxShadow: style.boxShadow,
                         width: rect.width,
                         height: rect.height,
                         x: rect.x,
@@ -1694,30 +2094,44 @@ test.describe('Mage Wars foundation runtime board', () => {
         expect(desktopLayoutAudit.mageHudHintCards).toHaveLength(2);
         expect(desktopLayoutAudit.legacyMageHudStatGridCount, '2560 桌面 HUD 不应继续渲染旧属性文字/进度条面板').toBe(0);
         expect(desktopLayoutAudit.legacyMageHudStatBarCount, '2560 桌面 HUD 不应继续渲染旧属性进度条').toBe(0);
-        expect(desktopLayoutAudit.mageHudIconRails, '双方 HUD 必须把属性和动作 token 放在提示卡右侧同一图标 rail').toHaveLength(2);
+        expect(desktopLayoutAudit.mageHudIconRails, '双方 HUD 属性栏只保留生命、法力和聚魔').toHaveLength(2);
         expect(desktopLayoutAudit.mageHudStatIcons, '双方 HUD 必须用图标承载生命、法力和聚魔').toHaveLength(6);
-        expect(desktopLayoutAudit.mageHudTokenIcons, '双方 HUD 必须保留动作和快速施法 token 图标').toHaveLength(4);
+        expect(desktopLayoutAudit.mageHudTokenIcons, '行动和快速施法 token 不应继续占用 HUD 属性栏').toHaveLength(0);
         for (const owner of ['self', 'opponent'] as const) {
             const ownerIcons = desktopLayoutAudit.mageHudStatIcons.filter((icon) => icon.owner === owner);
-            const ownerTokens = desktopLayoutAudit.mageHudTokenIcons.filter((icon) => icon.owner === owner);
+            const ownerRail = desktopLayoutAudit.mageHudIconRails.find((rail) => rail.owner === owner);
             const ownerHint = desktopLayoutAudit.mageHudHintCards.find((hintCard) => hintCard.owner === owner)?.rect;
             const ownerHud = owner === 'self' ? desktopLayoutAudit.selfHud : desktopLayoutAudit.opponentHud;
             expect(ownerIcons.map((icon) => icon.stat).sort()).toEqual(['channeling', 'life', 'mana']);
-            expect(ownerTokens.map((icon) => icon.kind).sort()).toEqual(['action', 'quickcast']);
+            expect(ownerRail, `2560 ${owner} HUD 图标列必须存在: ${JSON.stringify(desktopLayoutAudit)}`).toBeTruthy();
+            expect(ownerRail!.align, `2560 ${owner} HUD 属性整块必须左对齐`).toBe('left');
             expect(ownerHint).toBeTruthy();
             expect(ownerHud).toBeTruthy();
-            for (const icon of [...ownerIcons, ...ownerTokens]) {
+            for (const icon of ownerIcons) {
+                expect(icon.frame, `2560 ${owner} HUD 图标不能再有额外底框: ${JSON.stringify(desktopLayoutAudit)}`).toBe('none');
+                expect(icon.hitSurface, `2560 ${owner} HUD 属性图标显示层必须声明点击透传: ${JSON.stringify(desktopLayoutAudit)}`).toBe('visual-pass-through');
+                expect(icon.pointerEvents, `2560 ${owner} HUD 属性图标不能吞掉场上对象点击: ${JSON.stringify(desktopLayoutAudit)}`).toBe('none');
+                expect(['rgba(0, 0, 0, 0)', 'transparent'], `2560 ${owner} HUD 图标外层背景必须透明: ${JSON.stringify(desktopLayoutAudit)}`).toContain(icon.backgroundColor);
+                expect(icon.borderTopWidth, `2560 ${owner} HUD 图标外层不能画圆形描边: ${JSON.stringify(desktopLayoutAudit)}`).toBe('0px');
+                expect(icon.boxShadow, `2560 ${owner} HUD 图标外层不能画圆形阴影: ${JSON.stringify(desktopLayoutAudit)}`).toBe('none');
+                expect(icon.tooltipTrigger, `2560 ${owner} HUD 图标必须有可见 hover/focus 说明触发: ${JSON.stringify(desktopLayoutAudit)}`).toBe('hover-focus');
+                expect(icon.tooltipText, `2560 ${owner} HUD 图标必须提供玩家能读的说明: ${JSON.stringify(desktopLayoutAudit)}`).not.toBe('');
                 expect(icon.width, `2560 ${owner} HUD 图标必须在取消进度条后仍保持可读尺寸: ${JSON.stringify(desktopLayoutAudit)}`).toBeGreaterThanOrEqual(58);
                 expect(icon.height, `2560 ${owner} HUD 图标必须在取消进度条后仍保持可读尺寸: ${JSON.stringify(desktopLayoutAudit)}`).toBeGreaterThanOrEqual(58);
+                expect(Math.abs(icon.x - ownerRail!.x), `2560 ${owner} HUD 属性图标必须组成左对齐整块: ${JSON.stringify(desktopLayoutAudit)}`).toBeLessThanOrEqual(1);
                 expect(icon.x, `2560 ${owner} HUD 图标必须在提示卡右侧: ${JSON.stringify(desktopLayoutAudit)}`).toBeGreaterThanOrEqual(ownerHint!.right - 1);
                 expect(icon.right, `2560 ${owner} HUD 图标不得溢出 HUD 集群: ${JSON.stringify(desktopLayoutAudit)}`).toBeLessThanOrEqual(ownerHud!.right + 1);
             }
             for (const statIcon of ownerIcons) {
+                if (statIcon.stat === 'life') expect(statIcon.glyph, `2560 ${owner} 生命必须使用自绘生命符号`).toBe('vital-heart');
+                if (statIcon.stat === 'mana') expect(statIcon.glyph, `2560 ${owner} 法力必须使用自绘水晶符号`).toBe('mana-crystal');
+                if (statIcon.stat === 'channeling') expect(statIcon.glyph, `2560 ${owner} 聚魔必须使用自绘符文符号`).toBe('channel-rune');
                 expect(Number.isFinite(statIcon.fillPercent), `2560 ${owner} ${statIcon.stat} 图标必须暴露高亮比例`).toBe(true);
                 expect(statIcon.fillPercent, `2560 ${owner} ${statIcon.stat} 高亮比例必须夹在 0-100`).toBeGreaterThanOrEqual(0);
                 expect(statIcon.fillPercent, `2560 ${owner} ${statIcon.stat} 高亮比例必须夹在 0-100`).toBeLessThanOrEqual(100);
                 expect(statIcon.valueText, `2560 ${owner} ${statIcon.stat} 图标必须叠加数字`).toBe(statIcon.value);
                 expect(Number(statIcon.max), `2560 ${owner} ${statIcon.stat} 图标必须保留进度上限`).toBeGreaterThan(0);
+                expect(statIcon.tooltipText, `2560 ${owner} ${statIcon.stat} tooltip 必须解释当前 / 上限读数`).toContain(`${statIcon.value}/${statIcon.max}`);
             }
         }
         const mageCardAspectRatio = (4096 / 7) / (3302 / 4);
@@ -1738,12 +2152,32 @@ test.describe('Mage Wars foundation runtime board', () => {
             expect(Math.abs(hintCard.aspectRatio! - mageCardAspectRatio)).toBeLessThanOrEqual(0.003);
             expect(hintCard.previewKind).toBe('card');
             expect(hintCard.uiRole).toBe('player-hint-card');
+            expect(hintCard.hitSurface, `${hintCard.owner} HUD 提示卡本体应是视觉承载，不是整卡按钮`).toBe('visual-pass-through');
+            expect(hintCard.pointerEvents, `${hintCard.owner} HUD 提示卡本体不应吞掉场上对象点击`).toBe('none');
+            expect(hintCard.role, `${hintCard.owner} HUD 提示卡本体不应再暴露 button 语义`).toBeNull();
+            expect(hintCard.tabIndex, `${hintCard.owner} HUD 提示卡本体不应进入键盘主操作序列`).toBeNull();
+            expect(hintCard.inspectButtonCount, `${hintCard.owner} HUD 提示卡必须保留独立放大镜`).toBe(1);
+            expect(hintCard.inspectButtonHit, `${hintCard.owner} HUD 放大镜必须是真实可点击控件`).toBe(true);
         });
         expect(desktopLayoutAudit.zoneMageEntities).toHaveLength(2);
         expect(desktopLayoutAudit.zoneMageEntities.map((occupant) => occupant.mageId).sort()).toEqual([
             'priestess_apprentice',
             'warlock_apprentice',
         ]);
+        const layoutRectsOverlap = (
+            left?: { x: number; y: number; right: number; bottom: number } | null,
+            right?: { x: number; y: number; right: number; bottom: number } | null,
+        ) => Boolean(left && right
+            && left.x < right.right
+            && left.right > right.x
+            && left.y < right.bottom
+            && left.bottom > right.y);
+        const layoutRectInsideHostHorizontally = (
+            child?: { x: number; right: number } | null,
+            host?: { x: number; right: number } | null,
+        ) => Boolean(child && host
+            && child.x >= host.x - 0.5
+            && child.right <= host.right + 0.5);
         desktopLayoutAudit.zoneMageEntities.forEach((occupant) => {
             expect(occupant.rect).not.toBeNull();
             expect(occupant.aspectRatio).not.toBeNull();
@@ -1754,6 +2188,21 @@ test.describe('Mage Wars foundation runtime board', () => {
             expect(occupant.laneAxis).toBe('horizontal');
             expect(occupant.laneStackAxis).toBe('vertical');
             expect(occupant.rect!.height).toBeGreaterThan(85);
+            expect(occupant.actionTokenState).toBe('ready');
+            expect(occupant.actionTokenPosition).toBe('entity-left-inside-midline');
+            expect(occupant.actionTokenImageKey).toContain('ready-token-front');
+            expect(occupant.actionTokenImageLoaded).toBe(true);
+            expect(occupant.quickcastTokenState).toBe('ready');
+            expect(occupant.quickcastTokenPosition).toBe('entity-left-inside-midline');
+            expect(occupant.quickcastTokenImageKey).toContain('quickcast-marker-front');
+            expect(occupant.quickcastTokenImageLoaded).toBe(true);
+            expect(occupant.tokenRailPosition).toBe('entity-left-inside-midline');
+            expect(occupant.tokenRailAxis).toBe('vertical');
+            expect(occupant.tokenRailPlacement).toBe('inside');
+            expect(occupant.tokenRailLayout).toBe('stack');
+            expect(layoutRectInsideHostHorizontally(occupant.tokenRailRect, occupant.rect), `法师 token 竖列必须落在法师本体左内侧: ${JSON.stringify(occupant)}`).toBe(true);
+            expect(layoutRectsOverlap(occupant.actionTokenRect, occupant.lifeReadoutRect), `法师行动 token 不得压住生命读数: ${JSON.stringify(occupant)}`).toBe(false);
+            expect(layoutRectsOverlap(occupant.quickcastTokenRect, occupant.lifeReadoutRect), `法师快速施法 token 不得压住生命读数: ${JSON.stringify(occupant)}`).toBe(false);
         });
         const warlockEntity = desktopLayoutAudit.zoneMageEntities.find((occupant) => occupant.mageId === 'warlock_apprentice');
         const priestessEntity = desktopLayoutAudit.zoneMageEntities.find((occupant) => occupant.mageId === 'priestess_apprentice');
@@ -1827,6 +2276,9 @@ test.describe('Mage Wars foundation runtime board', () => {
         expect(Math.abs(desktopLayoutAudit.arenaImage!.y - desktopLayoutAudit.arenaStage!.y)).toBeLessThanOrEqual(2);
         expect(Math.abs(desktopLayoutAudit.arenaImage!.width - desktopLayoutAudit.arenaStage!.width)).toBeLessThanOrEqual(2);
         expect(Math.abs(desktopLayoutAudit.arenaImage!.height - desktopLayoutAudit.arenaStage!.height)).toBeLessThanOrEqual(2);
+        expect(desktopLayoutAudit.hudAnchorPointerEvents, 'HUD 锚点层外壳不应吞掉棋盘 / 牌桌输入').toBe('none');
+        expect(desktopLayoutAudit.selfHudPointerEvents, '己方 HUD 外壳不应吞掉非控件输入').toBe('none');
+        expect(desktopLayoutAudit.selfHudLayoutPosition, '饱和态己方 HUD 必须保持左下顶层锚点，不按 A2 / 场上实体启用避让态').toBe('self-lower-left');
         const expectedArenaZones = {
             a1: { column: 0, row: 0 },
             b1: { column: 1, row: 0 },
@@ -1856,11 +2308,12 @@ test.describe('Mage Wars foundation runtime board', () => {
         expect(desktopLayoutAudit.opponentPreparedMirror!.x, '对手已计划卡背必须在右上对手 HUD 左侧，不应留在左上角').toBeGreaterThan(desktopLayoutAudit.viewportWidth * 0.5);
         expect(desktopLayoutAudit.opponentPreparedMirror!.right).toBeLessThanOrEqual(desktopLayoutAudit.opponentHud!.x);
         expect(Math.abs(desktopLayoutAudit.opponentPreparedMirror!.y - desktopLayoutAudit.opponentHud!.y)).toBeLessThanOrEqual(3);
-        expect(desktopLayoutAudit.selfHud!.x, '己方 HUD 必须留在左半区，但要避开竞技场首列实体').toBeGreaterThanOrEqual(desktopLayoutAudit.viewportWidth * 0.24);
-        expect(desktopLayoutAudit.selfHud!.x, '己方 HUD 不得漂到中场或右侧玩家区').toBeLessThanOrEqual(desktopLayoutAudit.viewportWidth * 0.36);
-        expect(desktopLayoutAudit.selfHud!.y, '己方 HUD 必须在左下独立层，不应回到左上角').toBeGreaterThan(desktopLayoutAudit.viewportHeight * 0.25);
-        expect(desktopLayoutAudit.selfHud!.bottom, '己方 HUD 应靠近左下桌面区，而不是顶部 HUD 带').toBeGreaterThan(desktopLayoutAudit.viewportHeight * 0.55);
-        expect(desktopLayoutAudit.selfHud!.bottom, '己方 HUD 必须上移离开底部牌区').toBeLessThan(desktopLayoutAudit.bottomViewportGrid!.y);
+        expect(desktopLayoutAudit.selfHud!.x, '饱和态己方 HUD 必须贴左下顶层服务区，不能因 A2 / 场上实体漂到中场').toBeGreaterThanOrEqual(0);
+        expect(desktopLayoutAudit.selfHud!.x, '饱和态己方 HUD 不能启用按场上实体驱动的大比例安全偏移').toBeLessThanOrEqual(32);
+        expect(desktopLayoutAudit.selfHud!.right, '己方 HUD 集群不得越过桌面中线').toBeLessThan(desktopLayoutAudit.viewportWidth * 0.52);
+        expect(desktopLayoutAudit.selfHud!.y, '己方 HUD 必须处在左下独立层，不得回到左上工具带').toBeGreaterThan(desktopLayoutAudit.viewportHeight * 0.2);
+        expect(desktopLayoutAudit.selfHud!.bottom, '己方 HUD 必须离开底部牌区，不和法术书牌列同排').toBeLessThanOrEqual(desktopLayoutAudit.spellbookCard!.y - 6);
+        expect(desktopLayoutAudit.spellbookCard!.y - desktopLayoutAudit.selfHud!.bottom, '己方 HUD 必须贴近左下牌桌区，不能悬到中场').toBeLessThanOrEqual(32);
         expect(Math.abs(desktopLayoutAudit.spellbookShelf!.bottom - desktopLayoutAudit.preparedArea!.bottom)).toBeLessThanOrEqual(3);
         expect(Math.abs(desktopLayoutAudit.spellbookCard!.bottom - desktopLayoutAudit.preparedCard!.bottom)).toBeLessThanOrEqual(3);
         expect(desktopLayoutAudit.spellbookShelf!.x).toBeLessThanOrEqual(24);
@@ -1879,6 +2332,33 @@ test.describe('Mage Wars foundation runtime board', () => {
         expect(desktopLayoutAudit.fieldCards.filter((card) => card.role === 'target').length).toBeGreaterThan(0);
         expect(desktopLayoutAudit.fieldCards.filter((card) => card.ownerSide === 'seat-left')).toHaveLength(5);
         expect(desktopLayoutAudit.fieldCards.filter((card) => card.ownerSide === 'seat-right')).toHaveLength(5);
+        const spentCreatureCard = desktopLayoutAudit.fieldCards.find((card) => card.objectId === 'mw-test-red-creature');
+        expect(spentCreatureCard, `已消耗行动的生物必须在真实牌桌里可见: ${JSON.stringify(desktopLayoutAudit.fieldCards)}`).toBeTruthy();
+        expect(spentCreatureCard!.actionReady).toBe('false');
+        expect(spentCreatureCard!.actionTokenState).toBe('spent');
+        expect(spentCreatureCard!.visualActionState).toBeNull();
+        expect(spentCreatureCard!.className).not.toContain('grayscale');
+        expect(spentCreatureCard!.className).not.toContain('opacity-55');
+        expect(spentCreatureCard!.className).not.toContain('brightness-75');
+        expect(spentCreatureCard!.className).not.toContain('saturate-50');
+        expect(spentCreatureCard!.actionTokenPosition).toBe('entity-left-inside-midline');
+        expect(spentCreatureCard!.actionTokenImageKey).toContain('ready-token-back');
+        expect(spentCreatureCard!.actionTokenImageLoaded).toBe(true);
+        expect(spentCreatureCard!.tokenRailPosition).toBe('entity-left-inside-midline');
+        expect(spentCreatureCard!.tokenRailAxis).toBe('vertical');
+        expect(spentCreatureCard!.tokenRailPlacement).toBe('inside');
+        expect(layoutRectInsideHostHorizontally(spentCreatureCard!.tokenRailRect, spentCreatureCard!.rect), `生物 token 列必须落在生物卡牌左内侧: ${JSON.stringify(spentCreatureCard)}`).toBe(true);
+        expect(layoutRectsOverlap(spentCreatureCard!.actionTokenRect, spentCreatureCard!.lifeReadoutRect), `生物行动 token 不得压住生命读数: ${JSON.stringify(spentCreatureCard)}`).toBe(false);
+        expect(desktopLayoutAudit.fieldCards.some((card) => (
+            card.objectId !== 'mw-test-red-creature'
+            && card.actionReady === 'true'
+            && card.actionTokenState === 'ready'
+            && card.actionTokenPosition === 'entity-left-inside-midline'
+            && card.actionTokenImageKey.includes('ready-token-front')
+            && card.actionTokenImageLoaded
+            && layoutRectInsideHostHorizontally(card.tokenRailRect, card.rect)
+            && !layoutRectsOverlap(card.actionTokenRect, card.lifeReadoutRect)
+        ))).toBe(true);
         expect(desktopLayoutAudit.ownershipLanes).toHaveLength(2);
         expect(desktopLayoutAudit.ownershipLanes).toMatchObject([
             {
@@ -2152,6 +2632,8 @@ test.describe('Mage Wars foundation runtime board', () => {
         await expectMageWarsDefaultBrowseInteractions(page);
         await expectMageWarsDesktop2560Layout(page);
         await auditMageWarsImages(page, ['法师魔杖', '巨熊皮甲', '群兽法杖', '元素斗篷', '重生腰带']);
+
+        await captureMageHudTooltipScreenshots(page);
 
         await applyMageWarsPlanningState(page);
         const duplicateSpellbookCardInfo = await findVisibleDuplicateSpellbookCard(page);

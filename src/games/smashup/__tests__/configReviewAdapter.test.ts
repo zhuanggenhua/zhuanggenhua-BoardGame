@@ -33,6 +33,8 @@ describe('SmashUp configReviewAdapter', () => {
     const frozen = table.rows.find((row) => row.objectType === 'faction' && row.objectId === SMASHUP_FACTION_IDS.FROZEN);
     const aladdin = table.rows.find((row) => row.objectType === 'faction' && row.objectId === SMASHUP_FACTION_IDS.ALADDIN);
     const dwarves = table.rows.find((row) => row.objectType === 'faction' && row.objectId === SMASHUP_FACTION_IDS.MUNCHKIN_DWARVES);
+    const elves = table.rows.find((row) => row.objectType === 'faction' && row.objectId === SMASHUP_FACTION_IDS.MUNCHKIN_ELVES);
+    const clerics = table.rows.find((row) => row.objectType === 'faction' && row.objectId === SMASHUP_FACTION_IDS.MUNCHKIN_CLERICS);
 
     expect(frozen).toMatchObject({
       nameKey: 'factions.frozen.name',
@@ -47,6 +49,16 @@ describe('SmashUp configReviewAdapter', () => {
     expect(dwarves).toMatchObject({
       nameKey: 'factions.munchkin_dwarves.name',
       descriptionKey: 'factions.munchkin_dwarves.description',
+      implementationStatus: 'configured',
+    });
+    expect(elves).toMatchObject({
+      nameKey: 'factions.munchkin_elves.name',
+      descriptionKey: 'factions.munchkin_elves.description',
+      implementationStatus: 'configured',
+    });
+    expect(clerics).toMatchObject({
+      nameKey: 'factions.munchkin_clerics.name',
+      descriptionKey: 'factions.munchkin_clerics.description',
       implementationStatus: 'configured',
     });
     expect(aladdin?.fieldPaths.color).toBe('legacy.smashup.factionMetadata.aladdin.color');

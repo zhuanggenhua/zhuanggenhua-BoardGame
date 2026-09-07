@@ -421,7 +421,7 @@ describe('mage-wars tutorial', () => {
         expect(resolveLocaleKey(zhLocale, 'game-mage-wars:tutorial.visuals.spellCardLegendCaption'))
             .toBe('这张图例先说明计划法术会用到的基础字段。');
         expect(resolveLocaleKey(zhLocale, 'game-mage-wars:tutorial.steps.attackBarReading'))
-            .toBe('丛林灰狼已经在场上，现在再读攻击条：左侧图标区分快速或标准行动、近战或远程；右侧读范围、伤害类型、攻击骰子、附加效果和特性。');
+            .toBe('丛林灰狼已经在场上，现在只读攻击条，不选择它：左侧图标区分快速或标准行动、近战或远程；右侧读范围、伤害类型、攻击骰子、附加效果和特性。读完点下一步继续。');
         expect(resolveLocaleKey(zhLocale, 'game-mage-wars:tutorial.visuals.attackBarLegendAlt'))
             .toBe('攻击条图例：快速行动、标准行动、近战攻击、远程攻击、范围、伤害类型、攻击骰子、附加效果和特性');
         expect(resolveLocaleKey(zhLocale, 'game-mage-wars:tutorial.visuals.attackBarLegendCaption'))
@@ -433,7 +433,7 @@ describe('mage-wars tutorial', () => {
         expect(resolveLocaleKey(enLocale, 'game-mage-wars:tutorial.visuals.spellCardLegendCaption'))
             .toBe('This legend covers the basic fields needed for preparing spells.');
         expect(resolveLocaleKey(enLocale, 'game-mage-wars:tutorial.steps.attackBarReading'))
-            .toBe('Jungle Wolf is now in the arena, so read its attack bar: the left icons tell quick or full action and melee or ranged attack; the right side shows range, damage type, attack dice, extra effects, and traits.');
+            .toBe('Jungle Wolf is now in the arena. This is only a reading step, not a selection: the left icons tell quick or full action and melee or ranged attack; the right side shows range, damage type, attack dice, extra effects, and traits. Click Next when done.');
         expect(resolveLocaleKey(enLocale, 'game-mage-wars:tutorial.visuals.attackBarLegendAlt'))
             .toBe('Attack-bar legend showing quick action, full action, melee attack, ranged attack, range, damage type, attack dice, additional effects, and traits');
         expect(resolveLocaleKey(enLocale, 'game-mage-wars:tutorial.visuals.attackBarLegendCaption'))
@@ -448,10 +448,10 @@ describe('mage-wars tutorial', () => {
             ['planConfirm', '点击“确认计划 2/2”提交本回合计划。', 'Click “Confirm prep 2/2” to submit this round\'s plan.'],
             ['deploySelectWolf', '点击准备区的“丛林灰狼”。', 'Click Jungle Wolf in your prepared spells.'],
             ['deployTargetZone', '点击兽王所在区域。', 'Click the Beastmaster\'s zone.'],
-            ['wolfSummoned', '丛林灰狼已经被召唤到兽王所在区域；刚进场时行动未就绪，卡面变灰表示它现在还不能行动。', 'Jungle Wolf has been summoned into the Beastmaster\'s zone. It enters without a ready action, so the dimmed card means it cannot act yet.'],
+            ['wolfSummoned', '丛林灰狼已经被召唤到兽王所在区域；刚进场时行动未就绪，行动标记显示已用面表示它现在还不能行动。这一步先读状态，不点灰狼，点下一步继续。', 'Jungle Wolf has been summoned into the Beastmaster\'s zone. It enters without a ready action, so the spent action marker means it cannot act yet. This is a reading step: do not click the wolf yet, click Next to continue.'],
             ['rouseSelectSpell', '点击准备区的“兽性觉醒”。', 'Click Rouse the Beast in your prepared spells.'],
-            ['rouseTargetWolf', '点击场上的“丛林灰狼”。', 'Click Jungle Wolf in the arena.'],
-            ['moveSelectWolf', '点击场上的“丛林灰狼”。', 'Click Jungle Wolf in the arena.'],
+            ['rouseTargetWolf', '点击场上的“丛林灰狼”卡牌本体，让兽性觉醒作用到它。', 'Click the Jungle Wolf card body in the arena so Rouse the Beast targets it.'],
+            ['moveSelectWolf', '点击场上的“丛林灰狼”卡牌本体，选它作为这次移动的来源。', 'Click the Jungle Wolf card body in the arena to choose it as the moving creature.'],
             ['moveTargetZone', '点击相邻区域移动。', 'Click an adjacent zone to move.'],
         ] as const;
         for (const [key, zhText, enText] of singleActionStepTexts) {
@@ -580,8 +580,13 @@ describe('mage-wars tutorial', () => {
         });
     });
 
-    it('keeps Board.tsx tutorial anchors available for the manifest targets', () => {
+    it('keeps Board and direct surface tutorial anchors available for the manifest targets', () => {
         const boardSource = fs.readFileSync(path.join(process.cwd(), 'src', 'games', 'mage-wars', 'Board.tsx'), 'utf8');
+        const selectedAbilityActionDockSource = fs.readFileSync(
+            path.join(process.cwd(), 'src', 'games', 'mage-wars', 'ui', 'selectedAbilityActionDock.tsx'),
+            'utf8',
+        );
+        const tutorialAnchorSources = [boardSource, selectedAbilityActionDockSource].join('\n');
         for (const anchor of [
             'mw-board',
             'mw-stage',
@@ -613,7 +618,7 @@ describe('mage-wars tutorial', () => {
             'mw-mage-entity-',
             'data-tutorial-object-id',
         ]) {
-            expect(boardSource).toContain(anchor);
+            expect(tutorialAnchorSources).toContain(anchor);
         }
         expect(boardSource).not.toContain('mw-opponent-discard');
         expect(boardSource).not.toContain('mage-wars-opponent-discard-pile');

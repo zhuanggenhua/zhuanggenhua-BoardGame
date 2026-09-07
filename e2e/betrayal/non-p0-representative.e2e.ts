@@ -2,10 +2,8 @@ import { mkdirSync } from 'fs';
 import { dirname, resolve } from 'path';
 import { expect, test, type Locator, type Page } from '@playwright/test';
 import { BETRAYAL_DISCOVERY_POOLS } from '../../src/games/betrayal/scenarioConfig';
-import {
-    BETRAYAL_COMMANDS,
-    type BetrayalCore,
-} from '../../src/games/betrayal/game';
+import { type BetrayalCore } from '../../src/games/betrayal/game';
+import { BETRAYAL_COMMANDS } from '../../src/games/betrayal/commands';
 import {
     resolveBetrayalMonsterMovementGroups,
     type BetrayalMonsterMovementRollGroupResult,

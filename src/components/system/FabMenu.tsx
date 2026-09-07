@@ -32,12 +32,17 @@ export type FabPanelRenderContext = {
     closePanel: () => void;
 };
 
+export type FabMenuPosition = 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+
 interface FabMenuProps {
     items: FabAction[];
-    position?: 'bottom-right' | 'bottom-left' | 'top-right' | 'top-left';
+    position?: FabMenuPosition;
     isDark?: boolean;
     /** 覆盖悬浮球整体层级（默认 UI_Z_INDEX.hud） */
     zIndex?: number;
+    /** 可选的位置存储键；游戏内特殊布局可用独立键，避免共享位置挡住主操作区。 */
+    storageKey?: string;
+    legacyOffsetStorageKey?: string;
 }
 
 type FabAlignment = { v: 'top' | 'bottom'; h: 'left' | 'right' };
@@ -119,6 +124,8 @@ export const FabMenu = ({
     position: initialPosition = 'bottom-right',
     isDark = true,
     zIndex = UI_Z_INDEX.hud,
+    storageKey = HUD_FAB_POSITION_KEY,
+    legacyOffsetStorageKey = HUD_FAB_LEGACY_OFFSET_KEY,
 }: FabMenuProps) => {
     // 响应式尺寸
     const viewport = useRuntimeViewport();
@@ -229,8 +236,8 @@ export const FabMenu = ({
         const frameId = window.requestAnimationFrame(() => {
             try {
                 const resolved = resolveFabStoredPosition({
-                    savedPosition: readLocalStorageItem(HUD_FAB_POSITION_KEY),
-                    legacyOffset: readLocalStorageItem(HUD_FAB_LEGACY_OFFSET_KEY),
+                    savedPosition: readLocalStorageItem(storageKey),
+                    legacyOffset: readLocalStorageItem(legacyOffsetStorageKey),
                     viewportWidth,
                     viewportHeight,
                     basePosition: getInitialPosition(),
@@ -239,10 +246,10 @@ export const FabMenu = ({
                     resolvedButtonSize: dockedButtonSize,
                 });
                 if (resolved.shouldPersist) {
-                    writeLocalStorageItem(HUD_FAB_POSITION_KEY, JSON.stringify(resolved.percent));
+                    writeLocalStorageItem(storageKey, JSON.stringify(resolved.percent));
                 }
                 if (resolved.clearLegacyOffset) {
-                    removeLocalStorageItem(HUD_FAB_LEGACY_OFFSET_KEY);
+                    removeLocalStorageItem(legacyOffsetStorageKey);
                 }
                 setFabPosition(resolved.position);
                 setAlignment(getAlignmentForPosition(resolved.position, dockedButtonSize));
@@ -252,7 +259,7 @@ export const FabMenu = ({
         });
 
         return () => window.cancelAnimationFrame(frameId);
-    }, [clampPosition, dockedButtonSize, getAlignmentForPosition, getInitialPosition, normalizePosition, viewportHeight, viewportWidth]);
+    }, [clampPosition, dockedButtonSize, getAlignmentForPosition, getInitialPosition, legacyOffsetStorageKey, normalizePosition, storageKey, viewportHeight, viewportWidth]);
 
     const handleDragEnd = (_: any, info: any) => {
         if (!fabPosition || viewportWidth <= 0 || viewportHeight <= 0) return;
@@ -270,7 +277,7 @@ export const FabMenu = ({
         dragY.set(0);
         // 保存为百分比格式
         writeLocalStorageItem(
-            HUD_FAB_POSITION_KEY,
+            storageKey,
             JSON.stringify(serializeFabPositionPercent(next, viewportWidth, viewportHeight)),
         );
     };
@@ -361,7 +368,7 @@ export const FabMenu = ({
             // 从 localStorage 读取百分比，按新尺寸重新计算
             try {
                 const resolved = resolveFabStoredPosition({
-                    savedPosition: readLocalStorageItem(HUD_FAB_POSITION_KEY),
+                    savedPosition: readLocalStorageItem(storageKey),
                     legacyOffset: null,
                     viewportWidth,
                     viewportHeight,
@@ -371,7 +378,7 @@ export const FabMenu = ({
                     resolvedButtonSize: dockedButtonSize,
                 });
                 if (resolved.shouldPersist) {
-                    writeLocalStorageItem(HUD_FAB_POSITION_KEY, JSON.stringify(resolved.percent));
+                    writeLocalStorageItem(storageKey, JSON.stringify(resolved.percent));
                 }
                 setFabPosition(resolved.position);
                 setAlignment(getAlignmentForPosition(resolved.position, dockedButtonSize));
@@ -386,7 +393,7 @@ export const FabMenu = ({
         };
         window.addEventListener('resize', handleResize);
         return () => window.removeEventListener('resize', handleResize);
-    }, [clampPosition, dockedButtonSize, fabPosition, getAlignmentForPosition, normalizePosition, viewportHeight, viewportWidth]);
+    }, [clampPosition, dockedButtonSize, fabPosition, getAlignmentForPosition, normalizePosition, storageKey, viewportHeight, viewportWidth]);
 
     useEffect(() => {
         if (prevActiveItemIdRef.current === activeItemId) return;
@@ -502,6 +509,8 @@ export const FabMenu = ({
                 touchAction: 'none',
             }}
             data-testid="fab-menu"
+            data-fab-position={initialPosition}
+            data-fab-storage-key={storageKey}
         >
             {/* 主球：锚点，位置固定 */}
             <FabButtonSlot

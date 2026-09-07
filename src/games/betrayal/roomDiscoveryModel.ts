@@ -44,6 +44,15 @@ export type BetrayalRoomDiscoveryCards = {
     buriedRoomDiscoveryCards?: BetrayalInventoryCard[];
 };
 
+export type BetrayalExploreRoomCommandPayload = {
+    roomId?: string;
+    orientationTurns?: 0 | 1 | 2 | 3;
+    useHolySymbol?: boolean;
+    useIdol?: boolean;
+    ignoreEventSymbolWithTraitorPower?: boolean;
+    roomTileAdjustment?: BetrayalRoomTileAdjustmentSelection;
+};
+
 export interface BetrayalTileStackSearchCriteria {
     roomName?: string;
     visualId?: BetrayalRoomVisualId;
@@ -1356,6 +1365,38 @@ export function applyBetrayalRoomExploredPlacementState(
 
     core.currentExplorer.roomId = payload.roomId;
     core.rooms = refreshExplorableRoomSlots(core.rooms);
+}
+
+export function resolveBetrayalExploreRoomCommandPayload({
+    placementPreview,
+    selectedOrientation,
+    roomTileAdjustment,
+    useHolySymbol,
+    useIdol,
+    ignoreEventSymbolWithTraitorPower,
+}: {
+    placementPreview: BetrayalRoomPlacementPreview | null;
+    selectedOrientation: Pick<BetrayalRoomPlacementPreview['orientationOptions'][number], 'orientationTurns'> | null;
+    roomTileAdjustment: BetrayalRoomTileAdjustmentSelection | null;
+    useHolySymbol: boolean;
+    useIdol: boolean;
+    ignoreEventSymbolWithTraitorPower: boolean;
+}): BetrayalExploreRoomCommandPayload | null {
+    if (
+        !placementPreview
+        || !selectedOrientation
+        || (placementPreview.requiresTileAdjustment && !roomTileAdjustment)
+    ) {
+        return null;
+    }
+    return {
+        roomId: placementPreview.slotId,
+        orientationTurns: selectedOrientation.orientationTurns,
+        ...(roomTileAdjustment ? { roomTileAdjustment } : {}),
+        ...(useHolySymbol ? { useHolySymbol: true } : {}),
+        ...(useIdol ? { useIdol: true } : {}),
+        ...(ignoreEventSymbolWithTraitorPower ? { ignoreEventSymbolWithTraitorPower: true } : {}),
+    };
 }
 
 export function applyRoomDrawResolutionToCore(

@@ -12,7 +12,7 @@ const createHauntCore = (
       kind: "omen",
       title: "剧本",
       summary: "作祟开始",
-      detail: "最后一张预兆触发作祟，打开剧本书。",
+      detail: "最后一张预兆触发作祟，进入英雄阅读流程。",
       tone: "warning",
     },
     scenarioRuntime: {
@@ -26,7 +26,7 @@ const createHauntCore = (
   }) as BetrayalCore;
 
 describe("Betrayal scenario reader open plan", () => {
-  it("作祟首次打开私密英雄书时先停在英雄开场", () => {
+  it("作祟首次打开私密英雄阅读流程时先停在开场过场", () => {
     const plan = resolveScenarioReaderOpenPlan(createHauntCore(), "0", {
       mode: "hauntReveal",
       hasOpeningSection: true,

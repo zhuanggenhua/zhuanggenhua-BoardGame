@@ -11,14 +11,16 @@ import {
     createPendingDamageAllocation,
     setExplorerTraitsToDeathsDoor,
 } from './damageResolutionModel';
-import { addFeverishMonsterForPlayer, markDeadExplorer, releaseJackSpiritForDeadTraitor } from './deathStateReadModel';
+import {
+    addFeverishMonsterForPlayer,
+    markDeadExplorer,
+    releaseJackSpiritForDeadTraitor,
+} from './deathStateReadModel';
 import {
     findExplorerByPlayerId,
     getAllExplorers,
 } from './explorerReadModel';
-import {
-    MUMMY_GIRL_STEAL_CARD_ID,
-} from './hauntAttackRewardReadModel';
+import { MUMMY_GIRL_STEAL_CARD_ID } from './hauntAttackRewardReadModel';
 import {
     isDustHaunt,
     isHelpingHandsHaunt,
@@ -34,8 +36,14 @@ import {
     resolveMummyTraitorVictoryResult,
 } from './hauntVictoryModel';
 import { applyBetrayalMonsterDamageOutcome } from './monsterReadModel';
-import { createMummyEndgameResult, resolveMummyForcedDamageTraits } from './mummyHauntRules';
-import { cloneInventoryCard, buryPossessionCardToBottom } from './possessionDeckModel';
+import {
+    createMummyEndgameResult,
+    resolveMummyForcedDamageTraits,
+} from './mummyHauntRules';
+import {
+    cloneInventoryCard,
+    buryPossessionCardToBottom,
+} from './possessionDeckModel';
 import { resolveRecommendedAction } from './recommendedActionReadModel';
 import {
     canDeferOrdinaryAttackDamageToDefender,
@@ -46,10 +54,10 @@ import { applyTraitLoss } from './traitTrackModel';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
     BetrayalExplorerSummary,
     BetrayalPendingDamageAllocationState,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type DynamiteAttackResolvedEvent = Extract<BetrayalEvent, { type: 'DYNAMITE_ATTACK_RESOLVED' }>;
 type HauntAttackResolvedEvent = Extract<BetrayalEvent, { type: 'HAUNT_ATTACK_RESOLVED' }>;

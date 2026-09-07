@@ -37,11 +37,9 @@ import {
     cloneUseEffect,
     isWarningEventEffect,
 } from './possessionEffects';
-import type {
-    BetrayalCommand,
-    BetrayalCore,
-    BetrayalEvent,
-} from './game';
+import type { BetrayalCore } from './game';
+import type { BetrayalCommand } from './commandTypes';
+import type { BetrayalEvent } from './events';
 
 type EventRolledPayload = Extract<BetrayalEvent, { type: 'EVENT_ROLLED' }>['payload'];
 type CardResolutionAcknowledgedPayload = Extract<BetrayalEvent, { type: 'CARD_RESOLUTION_ACKNOWLEDGED' }>['payload'];

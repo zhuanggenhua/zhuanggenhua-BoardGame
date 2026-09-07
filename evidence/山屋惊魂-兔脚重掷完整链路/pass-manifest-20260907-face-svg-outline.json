@@ -1,0 +1,165 @@
+{
+  "verdict": "PASS",
+  "scope": "current-user-request",
+  "generatedAt": "2026-09-07T14:55:05.7068854Z",
+  "display": {
+    "purpose": "final-user-visible-delivery",
+    "trigger": "task-final-delivery",
+    "viewer": "pureref",
+    "finalPassBeforeOpen": true
+  },
+  "requirements": [
+    {
+      "requirement": "可清晰看到三颗可选骰子的方框。",
+      "status": "PASS",
+      "evidence": [
+        "当前 02 图：三颗可选骰子都有青色主边界，玩家第一眼能看出都可点击。",
+        "src/games/betrayal/houseDiceSurface.tsx：未选候选使用 data-reroll-target-candidate-box 的 SVG stroke，不再只靠底线或透明热区。",
+        "e2e/betrayal/rabbit-foot-reroll.e2e.ts：断言三颗骰子都有候选高亮和可见外描边。"
+      ]
+    },
+    {
+      "requirement": "方框贴着骰子边，不能和骰子产生大间隙。",
+      "status": "PASS",
+      "evidence": [
+        "当前 02/03 图：外框贴在骰面边缘，不再是远离骰子的轴对齐大框。",
+        "src/lib/dice-box-threejs/engine.ts：新增当前可见骰面四角投影，输出 outlinePoints。",
+        "src/games/betrayal/houseDicePresentation.ts：视觉合同升级为 projected-face-svg-outline-plus-threejs-shell。"
+      ]
+    },
+    {
+      "requirement": "方框和选中高亮不能遮挡骰子。",
+      "status": "PASS",
+      "evidence": [
+        "当前 02/03 图：骰面 0、1、2 仍可读，青色和黄色线只贴外缘。",
+        "src/games/betrayal/houseDiceSurface.tsx：SVG polygon fill=transparent，只画 stroke；DOM 层不使用内部 border 覆盖骰面。",
+        "src/lib/dice-box-threejs/engine.ts：Three.js 外壳仍是 ShaderMaterial + BackSide + depthWrite=false，只作为外缘辅助。"
+      ]
+    },
+    {
+      "requirement": "方框之间不能重叠，尤其 02 不能再出现明显重叠。",
+      "status": "PASS",
+      "evidence": [
+        "当前 02 图：三颗可选框彼此分离，没有互相压住；02 和 03 也是不同状态、不同哈希。",
+        "e2e/betrayal/rabbit-foot-reroll.e2e.ts：逐对计算目标框加描边后的重叠面积，要求不超过 1px。",
+        "SHA256：02=EF72E9AFF9BD4698CE786F4B4F99E388575359C5E185FA9EBD7A75CD44201294；03=FB013BEF2BD1A66FBA38FD1BD7178E757BFD383E76B728EC20B919AE24C5098D。"
+      ]
+    },
+    {
+      "requirement": "选中后高亮清晰可见、不遮挡骰子。",
+      "status": "PASS",
+      "evidence": [
+        "当前 03 图：第 2 颗骰子升级为黄色外描边，另外两颗保持青色候选态，状态区别清楚。",
+        "src/games/betrayal/houseDiceSurface.tsx：选中态使用更粗黄色 SVG stroke，候选态使用青色 stroke。",
+        "e2e/betrayal/rabbit-foot-reroll.e2e.ts：断言选中态 selected、黄色、高亮强度和 Three.js 外壳同步。"
+      ]
+    },
+    {
+      "requirement": "兔脚改骰端到端完成。",
+      "status": "PASS",
+      "evidence": [
+        "npm run typecheck：通过。",
+        "npm run test:e2e:file -- e2e/betrayal/rabbit-foot-reroll.e2e.ts：1 passed，重新生成 01-05 当前流程截图。",
+        "node scripts/infra/vitest-cli-safe.mjs run src/games/betrayal/__tests__/Board.foundation.test.tsx --configLoader native --pool forks --no-file-parallelism --maxWorkers 1：192 passed。"
+      ]
+    }
+  ],
+  "images": [
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\00-sequence-index.png",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\01-labeled-01-兔脚重掷前最近投骰可见.png",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\02-labeled-02-兔脚选中后可选骰子方框.png",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\03-labeled-03-选中骰子等待确认使用.png",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\04-labeled-04-兔脚重掷动画进行中.png",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\05-labeled-05-自动结算后返回牌桌.png"
+  ],
+  "sourceImages": [
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\01-兔脚重掷前最近投骰可见.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\02-兔脚选中后可选骰子方框.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\03-选中骰子等待确认使用.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\04-兔脚重掷动画进行中.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\05-自动结算后返回牌桌.jpg"
+  ],
+  "originalImages": [
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\01-兔脚重掷前最近投骰可见.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\02-兔脚选中后可选骰子方框.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\03-选中骰子等待确认使用.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\04-兔脚重掷动画进行中.jpg",
+    "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\05-自动结算后返回牌桌.jpg"
+  ],
+  "imageStats": [
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\01-兔脚重掷前最近投骰可见.jpg",
+      "bytes": 190428,
+      "mtime": "2026-09-07T14:49:58.5140845Z",
+      "sha256": "16522F1B24341DE23C3325B41E8BC0E429458E8DA8C6652590057C0CCB8F05F6"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\02-兔脚选中后可选骰子方框.jpg",
+      "bytes": 195474,
+      "mtime": "2026-09-07T14:49:59.8654365Z",
+      "sha256": "EF72E9AFF9BD4698CE786F4B4F99E388575359C5E185FA9EBD7A75CD44201294"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\03-选中骰子等待确认使用.jpg",
+      "bytes": 194360,
+      "mtime": "2026-09-07T14:50:00.9179184Z",
+      "sha256": "FB013BEF2BD1A66FBA38FD1BD7178E757BFD383E76B728EC20B919AE24C5098D"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\04-兔脚重掷动画进行中.jpg",
+      "bytes": 188654,
+      "mtime": "2026-09-07T14:50:06.8082939Z",
+      "sha256": "60F8564D134B774FD0EC9BEFE4C614BBC730FD104435CBEE196EF649DE356F54"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\20260907-贴边外描边-v2\\05-自动结算后返回牌桌.jpg",
+      "bytes": 159448,
+      "mtime": "2026-09-07T14:50:06.9484990Z",
+      "sha256": "262FBAB3935A5E7B881788F121F6F44EC61D64D922B0A128E5FF51BFD6CBB4E7"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\00-sequence-index.png",
+      "bytes": 200677,
+      "mtime": "2026-09-07T14:54:10.4176167Z",
+      "sha256": "C6F1E0100DBC54E82052D8871E641AAFE2011F30026D5EC9DBB039FCDCFD0055"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\01-labeled-01-兔脚重掷前最近投骰可见.png",
+      "bytes": 898439,
+      "mtime": "2026-09-07T14:54:09.3327572Z",
+      "sha256": "EE2A628AF37EA95FFEEF21034A2D755A7697966C354F86DF3DD74E68F768E8BA"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\02-labeled-02-兔脚选中后可选骰子方框.png",
+      "bytes": 913930,
+      "mtime": "2026-09-07T14:54:09.5758892Z",
+      "sha256": "9BC087C760B2B63802F19077FE35B3A558412B1E189AFD3B565BD09F428F7B88"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\03-labeled-03-选中骰子等待确认使用.png",
+      "bytes": 921853,
+      "mtime": "2026-09-07T14:54:09.8350416Z",
+      "sha256": "B1B9A4EF71B3CD64ECD33D79761B6281D580572281C42B66E9A7E53017B4B423"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\04-labeled-04-兔脚重掷动画进行中.png",
+      "bytes": 898671,
+      "mtime": "2026-09-07T14:54:10.0919025Z",
+      "sha256": "6683524E682DFA5632508EED1FF22873B9CDDD968EE65195F42BE43FD440A700"
+    },
+    {
+      "path": "D:\\gongzuo\\webgame\\BoardGame\\evidence\\山屋惊魂-兔脚重掷完整链路\\_labeled-rabbit-foot-reroll-20260907-face-svg-outline\\05-labeled-05-自动结算后返回牌桌.png",
+      "bytes": 739597,
+      "mtime": "2026-09-07T14:54:10.2852608Z",
+      "sha256": "C89AC10C8D6AF15DE72B82D1D00B8A6E348B57B522557A1ABA80CF382D8155E7"
+    }
+  ],
+  "validation": [
+    "npx ctx7@latest library three.js \"Three.js project mesh face corners to screen coordinates shader outline selected mesh BackSide ShaderMaterial\"",
+    "npx ctx7@latest docs /mrdoob/three.js \"Vector3 project camera Object3D updateMatrixWorld camera projection screen coordinates ShaderMaterial BackSide transparent depthWrite outline mesh\"",
+    "npm run typecheck",
+    "npm run test:e2e:file -- e2e/betrayal/rabbit-foot-reroll.e2e.ts",
+    "node scripts/infra/vitest-cli-safe.mjs run src/games/betrayal/__tests__/Board.foundation.test.tsx --configLoader native --pool forks --no-file-parallelism --maxWorkers 1",
+    "git diff --check -- scoped rabbit-foot files"
+  ]
+}

@@ -2188,6 +2188,61 @@ describe('AI legal actions', () => {
         expect(rerollAction).toBeDefined();
     });
 
+    it('线上反馈：main1 中抬一手应从已确认普通骰区生成可执行重掷，而不是空选项取消', () => {
+        const state = createInitializedState(['0', '1', '2', '3'], fixedRandom);
+        state.sys.phase = 'main1';
+        state.core.activePlayerId = '0';
+        state.core.rollCount = 1;
+        state.core.rollLimit = 3;
+        state.core.rollDiceCount = 5;
+        state.core.rollConfirmed = true;
+        state.core.dice = state.core.dice.slice(0, 5).map((die, index) => ({
+            ...die,
+            id: index,
+            value: [6, 5, 4, 2, 1][index],
+            ownerId: '0',
+            isKept: false,
+        }));
+        delete state.core.currentRollContext;
+        injectRawBlockingInteraction(state, {
+            id: 'dt-dice-select-card-give-hand-confirmed-main-roll',
+            kind: 'multistep-choice',
+            playerId: '1',
+            data: {
+                title: 'interaction.selectDiceToReroll',
+                sourceId: 'card-give-hand',
+                minSteps: 1,
+                initialResult: { selectedDiceIds: [] },
+                allowedDieIds: [0, 1, 2, 3, 4],
+                meta: {
+                    dtType: 'selectDie',
+                    selectCount: 1,
+                    diceOwnerId: '0',
+                    targetOpponentDice: true,
+                },
+            },
+        });
+
+        const actions = buildDiceThroneAiLegalActions({ playerId: '1', state });
+        const rerollAction = actions.find((action) => (
+            action.kind === 'interaction-multistep'
+            && action.commands.some((command) => command.type === 'REROLL_DIE')
+        ));
+        const rerollCommand = rerollAction?.commands.find((command) => command.type === 'REROLL_DIE');
+
+        expect(actions).not.toContainEqual(expect.objectContaining({
+            kind: 'interaction-cancel',
+            metadata: expect.objectContaining({ reason: 'empty-options' }),
+        }));
+        expect(rerollCommand).toBeDefined();
+        const result = tryCmd(
+            state,
+            cmd('REROLL_DIE', '1', rerollCommand?.payload as Record<string, unknown>),
+            createQueuedRandom([3]),
+        );
+        expect(result.success).toBe(true);
+    });
+
     it('modifyDie copy 双骰交互应生成有顺序的源骰→目标骰批动作，而不是单骰确认', () => {
         const state = createInitializedState(['0', '1'], fixedRandom);
         state.core.dice = state.core.dice.slice(0, 3).map((die, index) => ({

@@ -1,11 +1,9 @@
 import type { RandomFn } from '../../engine/types';
 import { rollBetrayalDicePips } from './diceRules';
 import { findExplorerByPlayerId } from './explorerReadModel';
-import type {
-    BetrayalCommandMap,
-    BetrayalCore,
-    BetrayalEvent,
-} from './game';
+import type { BetrayalCore } from './game';
+import type { BetrayalCommandMap } from './commandTypes';
+import type { BetrayalEvent } from './events';
 import {
     createBetrayalMonsterMovementRollGroupResult,
     hasMummyTeleportMoveAvailable,

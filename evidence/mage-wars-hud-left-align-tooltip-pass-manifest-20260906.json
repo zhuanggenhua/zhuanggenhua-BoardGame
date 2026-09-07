@@ -1,0 +1,84 @@
+{
+  "verdict": "PASS",
+  "scope": "current-user-request",
+  "display": {
+    "purpose": "final-user-visible-delivery",
+    "trigger": "task-final-delivery",
+    "viewer": "pureref",
+    "finalPassBeforeOpen": true
+  },
+  "requirements": [
+    {
+      "requirement": "通用 UI/UX 规范必须覆盖 HUD 信息簇外层锚点和图标状态可解释性，避免只修单个游戏样式",
+      "status": "PASS",
+      "evidence": [
+        ".spec/knowledge/standards/ui-ux.md：新增“信息簇对齐看外层锚点”，要求左 / 右对齐验收检查整组外层边界、主对象和相邻读数关系",
+        ".spec/knowledge/standards/ui-ux.md：新增“图标状态要可解释”，要求图标、灰亮进度或数字叠层状态必须提供玩家可见 hover / focus 说明"
+      ]
+    },
+    {
+      "requirement": "己方 HUD / 属性区必须真正贴左侧信息区，不再因为外层偏移在左边留大空白或漂到中场",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：己方 HUD left 改为 var(--mage-wars-desktop-side-inset)，top 改为左上工具下方",
+        "e2e/mage-wars/mage-wars-tutorial.e2e.ts：1366 / 1920 断言己方 HUD 贴近左侧安全边距、在生命眼睛下方且不压底部计划区",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：2560 宽屏断言己方 HUD x 在 6-32px 范围，不再保留旧 24%-36% 中场偏移"
+      ]
+    },
+    {
+      "requirement": "属性 / 行动 / 快速施法图标必须组成左对齐整块，保留可读尺寸、无额外黑圈底框",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：MageHudIconRail 改为 items-start，并暴露 data-hud-icon-rail-align=left",
+        "src/games/mage-wars/Board.tsx：MageHudStatIcon / MageHudTokenIcon 外层 data-hud-icon-frame=none，移除额外底框、描边和阴影",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：断言图标 x 与 rail x 差值不超过 1px，背景透明、borderTopWidth 为 0px、boxShadow 为 none"
+      ]
+    },
+    {
+      "requirement": "属性图标鼠标悬浮或键盘聚焦时必须出现可见说明，不能只靠 title / aria-label",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：属性和 token 图标增加 data-hud-icon-tooltip-trigger=hover-focus 与可见 tooltip",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：真实 hover 己方法力图标并截图 e2e-desktop-2560x1304-hud-stat-tooltip.png",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：断言 tooltip 文本非空且属性 tooltip 包含当前 / 上限读数"
+      ]
+    },
+    {
+      "requirement": "1366x768 和 1920x1080 计划态必须能真实点击卡牌本体进入计划槽，并且点击计划槽能移除草稿",
+      "status": "PASS",
+      "evidence": [
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/mage-wars-tutorial.e2e.ts \"1366x768 真实卡面点击计划且计划槽位不被遮挡\"：1 passed",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/mage-wars-tutorial.e2e.ts \"1920x1080 真实卡面点击计划且计划槽位不被遮挡\"：1 passed",
+        "test-results/evidence-screenshots/mage-wars/tutorial-plan-click-responsive/01-1366-plan-slot-click-cancels-draft.png 与 04-1920-plan-slot-click-cancels-draft.png：计划槽点击取消草稿的中间证据"
+      ]
+    },
+    {
+      "requirement": "正式牌桌压力态必须仍能显示多单位布局，不因 HUD 移动遮挡场上单位",
+      "status": "PASS",
+      "evidence": [
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"真实入口加载正式牌桌素材并落桌面验收截图\"：1 passed",
+        "test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-six-per-side-lane-wrap.png：双方各六个单位压力态截图",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：clickVisibleMageWarsFieldCard 会验证目标场上牌存在可点击露出点，失败时输出 HUD / lane 遮挡证据"
+      ]
+    },
+    {
+      "requirement": "2560x1304 宽屏下地图拖拽后仍是自由查看，不是被固定内框限制，HUD 不跟随地图漂移",
+      "status": "PASS",
+      "evidence": [
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"2560x1304 真实入口验证放大镜悬浮、宽屏布局和地图自由查看\"：1 passed",
+        "test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-map-dragged.png：拖拽后地图证据",
+        "test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-board.png：宽屏默认布局对照证据"
+      ]
+    }
+  ],
+  "images": [
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/00-sequence-index.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/01-labeled-00-1366-plan-card-body-click-one-of-two.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/02-labeled-03-1920-plan-card-body-click-one-of-two.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/03-labeled-e2e-desktop-board.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/04-labeled-e2e-desktop-six-per-side-lane-wrap.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/05-labeled-e2e-desktop-2560x1304-hud-stat-tooltip.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/06-labeled-e2e-desktop-2560x1304-board.png",
+    "test-results/evidence-screenshots/mage-wars/hud-left-align-tooltip-20260906/_labeled-for-pureref/07-labeled-e2e-desktop-2560x1304-map-dragged.png"
+  ]
+}

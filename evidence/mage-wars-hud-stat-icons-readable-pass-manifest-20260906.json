@@ -21,8 +21,27 @@
       "status": "PASS",
       "evidence": [
         "src/games/mage-wars/Board.tsx：MageHudStatIcon 输出 data-fill-percent、data-stat-value，并用裁剪高亮层叠加数字",
-        "e2e/mage-wars/mage-wars-tutorial.e2e.ts：断言 fillPercent 在 0-100，valueText 等于 data-stat-value",
-        "e2e/mage-wars/foundation-board-runtime.e2e.ts：正式牌桌重复验证 fillPercent、valueText 和 max"
+        "src/games/mage-wars/Board.tsx：生命 / 法力 / 聚魔改为自绘 vital-heart / mana-crystal / channel-rune SVG",
+        "e2e/mage-wars/mage-wars-tutorial.e2e.ts：断言 fillPercent 在 0-100，valueText 等于 data-stat-value，且 glyph 命中自绘 SVG",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：正式牌桌重复验证 fillPercent、valueText、max 和 glyph"
+      ]
+    },
+    {
+      "requirement": "属性 / 行动图标不能再有额外黑色圆形底框，外层必须透明、无边框、无阴影",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：MageHudStatIcon / MageHudTokenIcon 外层 data-hud-icon-frame=none，移除 bg-black、rounded-full、border、box-shadow",
+        "e2e/mage-wars/mage-wars-tutorial.e2e.ts：断言 wrapper background 透明、borderTopWidth 为 0px、boxShadow 为 none",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：正式牌桌重复断言无额外底框"
+      ]
+    },
+    {
+      "requirement": "属性整块必须左对齐，并和行动 / 快速施法图标组成同一左对齐图标列",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：MageHudIconRail 改为 items-start，并暴露 data-hud-icon-rail-align=left",
+        "e2e/mage-wars/mage-wars-tutorial.e2e.ts：断言每个图标 x 与 rail x 差值不超过 1px",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：正式牌桌重复验证左对齐"
       ]
     },
     {
@@ -46,10 +65,10 @@
     }
   ],
   "images": [
-    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-readable-20260906/_labeled-for-pureref/00-sequence-index.png",
-    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-readable-20260906/_labeled-for-pureref/01-labeled-00-1366-plan-card-body-click-one-of-two.png",
-    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-readable-20260906/_labeled-for-pureref/02-labeled-03-1920-plan-card-body-click-one-of-two.png",
-    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-readable-20260906/_labeled-for-pureref/03-labeled-e2e-desktop-board.png",
-    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-readable-20260906/_labeled-for-pureref/04-labeled-e2e-desktop-2560x1304-board.png"
+    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-no-frame-20260906/_labeled-for-pureref/00-sequence-index.png",
+    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-no-frame-20260906/_labeled-for-pureref/01-labeled-00-1366-plan-card-body-click-one-of-two.png",
+    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-no-frame-20260906/_labeled-for-pureref/02-labeled-03-1920-plan-card-body-click-one-of-two.png",
+    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-no-frame-20260906/_labeled-for-pureref/03-labeled-e2e-desktop-board.png",
+    "test-results/evidence-screenshots/mage-wars/hud-stat-icons-no-frame-20260906/_labeled-for-pureref/04-labeled-e2e-desktop-2560x1304-board.png"
   ]
 }

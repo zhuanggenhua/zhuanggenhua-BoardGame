@@ -20,11 +20,9 @@ import {
     canUseSkeletonKeyForMove,
     resolveSkeletonKeyCardId,
 } from './possessionActionReadModel';
-import type {
-    BetrayalCommand,
-    BetrayalCore,
-    BetrayalEvent,
-} from './game';
+import type { BetrayalCore } from './game';
+import type { BetrayalCommand } from './commandTypes';
+import type { BetrayalEvent } from './events';
 
 type MoveToRoomCommand = Extract<BetrayalCommand, { type: typeof BETRAYAL_COMMANDS.MOVE_TO_ROOM }>;
 type ExplorerMovedPayload = Extract<BetrayalEvent, { type: 'EXPLORER_MOVED' }>['payload'];

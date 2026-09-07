@@ -10,8 +10,8 @@ import { resolveMummyTraitorVictoryResult } from './hauntVictoryModel';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type MummyNameStudiedEvent = Extract<BetrayalEvent, { type: 'MUMMY_NAME_STUDIED' }>;
 type MummyBanishmentLearnedEvent = Extract<BetrayalEvent, { type: 'MUMMY_BANISHMENT_LEARNED' }>;

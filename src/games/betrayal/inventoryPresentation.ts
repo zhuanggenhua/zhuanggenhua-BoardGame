@@ -1,9 +1,17 @@
 import type {
+  BetrayalCore,
   BetrayalExplorerSummary,
   BetrayalInventoryCard,
+  BetrayalRoomNode,
   BetrayalTraitKey,
   PossessionUseEffectProfile,
 } from "./game";
+import { resolveMoveTargetRooms } from "./movementReadModel";
+import {
+  canUseBookForPendingEventRoll,
+  canUseRecentRollRerollItemForRecentRoll,
+  type BetrayalPossessionSpecialActionStatus,
+} from "./possessionActionReadModel";
 import {
   resolveInventoryEffectId,
   resolveUseEffect,
@@ -173,8 +181,7 @@ export function resolveInventoryRulesSummary(
     passiveLabels.push("实际承受物理伤害后 +1 神志");
     passiveLabels.push("援手作祟中决定胜利并控制巨魔手");
   }
-  if (effectId === "rope")
-    passiveLabels.push("可重掷刚刚的投骰结果");
+  if (effectId === "rope") passiveLabels.push("可重掷刚刚的投骰结果");
   if (effectId === "armor") passiveLabels.push("受到物理伤害 -1");
   if (effectId === "radio") passiveLabels.push("受到精神伤害 -1");
   if (effectId === "lockpick-tool")
@@ -190,7 +197,9 @@ export function resolveInventoryRulesSummary(
   if (effectId === "gun")
     passiveLabels.push("攻击时可选择枪，攻击视线内目标，失败不反伤");
   if (effectId === "crossbow")
-    passiveLabels.push("攻击时可选择十字弓，攻击同板块或相邻板块目标，失败不反伤");
+    passiveLabels.push(
+      "攻击时可选择十字弓，攻击同板块或相邻板块目标，失败不反伤",
+    );
 
   if (activeLabel !== "按卡面规则持有" && passiveLabels.length > 0) {
     return `${activeLabel}；${passiveLabels.join("；")}`;
@@ -201,6 +210,507 @@ export function resolveInventoryRulesSummary(
   return passiveLabels.length > 0 ? passiveLabels.join("；") : activeLabel;
 }
 
+export type BetrayalInventoryDisplayReadModel = {
+  recentRollInterventionOwner: BetrayalExplorerSummary | null;
+  inventoryActionPlayerId: string;
+  pendingDiscoveryInventoryCardIds: Set<string>;
+  actionInventoryCards: BetrayalInventoryCard[];
+  inventoryDisplayExplorer: BetrayalExplorerSummary;
+  isInventoryDisplayReadOnly: boolean;
+  visibleInventoryCards: BetrayalInventoryCard[];
+  selectedInventoryCard: BetrayalInventoryCard | null;
+  selectedInventoryUseEffect: PossessionUseEffectProfile | null;
+  selectedInventoryUseEffectMode: PossessionUseEffectProfile["mode"] | null;
+  selectedInventoryHealTarget: "self" | "selfOrSameRoomExplorer" | null;
+  selectedInventoryRollTotalReplacementEffect: Extract<
+    PossessionUseEffectProfile,
+    { mode: "nextNonCombatTraitRollTotalReplacement" }
+  > | null;
+  selectedInventoryReplacementRollTotal: number | null;
+  selectedInventoryReplacementRollTotalOptions: number[];
+  healTargetExplorers: BetrayalExplorerSummary[];
+  selectedInventoryTargetPlayerId: string | null;
+  selectedInventoryHealPreviewExplorer: BetrayalExplorerSummary | null;
+  selectedInventoryHealPreviewTraits: BetrayalTraitKey[];
+  previewInventoryCard: BetrayalInventoryCard | null;
+};
+
+export function resolveBetrayalInventoryDisplayReadModel({
+  core,
+  allExplorers,
+  observedExplorer,
+  viewerPlayerId,
+  selectedInventoryCardId,
+  selectedInventoryTargetPlayerId,
+  selectedInventoryReplacementRollTotal,
+  inventoryPreviewCardId,
+}: {
+  core: BetrayalCore;
+  allExplorers: BetrayalExplorerSummary[];
+  observedExplorer: BetrayalExplorerSummary;
+  viewerPlayerId: string;
+  selectedInventoryCardId: string | null;
+  selectedInventoryTargetPlayerId: string | null;
+  selectedInventoryReplacementRollTotal: number | null;
+  inventoryPreviewCardId: string | null;
+}): BetrayalInventoryDisplayReadModel {
+  const recentRollInterventionOwner = (() => {
+    if (!core.recentRoll || core.recentRoll.playerId !== viewerPlayerId) {
+      return null;
+    }
+    const owner = allExplorers.find(
+      (explorer) => explorer.playerId === core.recentRoll?.playerId,
+    );
+    if (!owner) {
+      return null;
+    }
+    return owner.inventory.some(
+      (card) =>
+        canUseRecentRollRerollItemForRecentRoll(
+          core,
+          owner.playerId,
+          card.id,
+        ) || canUseBookForPendingEventRoll(core, owner.playerId, card.id),
+    )
+      ? owner
+      : null;
+  })();
+  const inventoryActionPlayerId =
+    recentRollInterventionOwner?.playerId ?? core.currentExplorer.playerId;
+  const pendingDiscoveryInventoryCardIds = (() => {
+    const pending = core.pendingCardResolutionQueue?.[0];
+    if (!pending) {
+      return new Set<string>();
+    }
+    const cardIds = new Set(
+      (pending.processCards ?? [])
+        .filter((card) => card.outcome === "gained" && Boolean(card.cardId))
+        .map((card) => card.cardId!),
+    );
+    if (
+      cardIds.size === 0 &&
+      pending.cardId &&
+      (pending.deckKind === "item" || pending.deckKind === "omen")
+    ) {
+      cardIds.add(pending.cardId);
+    }
+    return cardIds;
+  })();
+  const actionInventoryCards = (
+    recentRollInterventionOwner?.inventory ?? core.currentExplorerInventory
+  ).filter((card) => !pendingDiscoveryInventoryCardIds.has(card.id));
+  const inventoryDisplayExplorer = recentRollInterventionOwner ?? observedExplorer;
+  const isInventoryDisplayReadOnly =
+    inventoryDisplayExplorer.playerId !== inventoryActionPlayerId;
+  const visibleInventoryCards = inventoryDisplayExplorer.inventory.filter(
+    (card) => !pendingDiscoveryInventoryCardIds.has(card.id),
+  );
+  const selectedInventoryCard =
+    actionInventoryCards.find((item) => item.id === selectedInventoryCardId) ??
+    null;
+  const selectedInventoryUseEffect = selectedInventoryCard
+    ? resolveUseEffect(selectedInventoryCard)
+    : null;
+  const selectedInventoryUseEffectMode =
+    selectedInventoryUseEffect?.mode ?? null;
+  const selectedInventoryHealTarget =
+    selectedInventoryUseEffect?.mode === "healTraits"
+      ? selectedInventoryUseEffect.target
+      : null;
+  const selectedInventoryRollTotalReplacementEffect =
+    selectedInventoryUseEffect?.mode ===
+    "nextNonCombatTraitRollTotalReplacement"
+      ? selectedInventoryUseEffect
+      : null;
+  const normalizedReplacementRollTotal =
+    selectedInventoryRollTotalReplacementEffect &&
+    Number.isInteger(selectedInventoryReplacementRollTotal) &&
+    selectedInventoryReplacementRollTotal >=
+      selectedInventoryRollTotalReplacementEffect.minTotal &&
+    selectedInventoryReplacementRollTotal <=
+      selectedInventoryRollTotalReplacementEffect.maxTotal
+      ? selectedInventoryReplacementRollTotal
+      : null;
+  const selectedInventoryReplacementRollTotalOptions =
+    selectedInventoryRollTotalReplacementEffect
+      ? Array.from(
+          {
+            length:
+              selectedInventoryRollTotalReplacementEffect.maxTotal -
+              selectedInventoryRollTotalReplacementEffect.minTotal +
+              1,
+          },
+          (_, index) =>
+            selectedInventoryRollTotalReplacementEffect.minTotal + index,
+        )
+      : [];
+  const healTargetExplorers =
+    selectedInventoryUseEffectMode === "healTraits" &&
+    selectedInventoryHealTarget === "selfOrSameRoomExplorer"
+      ? [
+          core.currentExplorer,
+          ...core.otherExplorers.filter(
+            (explorer) =>
+              explorer.roomId === core.currentExplorer.roomId &&
+              !core.scenarioRuntime.deadExplorerPlayerIds.includes(
+                explorer.playerId,
+              ),
+          ),
+        ]
+      : [];
+  const normalizedInventoryTargetPlayerId =
+    selectedInventoryUseEffectMode === "healTraits" &&
+    selectedInventoryHealTarget === "selfOrSameRoomExplorer"
+      ? healTargetExplorers.some(
+          (explorer) => explorer.playerId === selectedInventoryTargetPlayerId,
+        )
+        ? selectedInventoryTargetPlayerId
+        : null
+      : null;
+  const selectedInventoryHealPreviewExplorer =
+    selectedInventoryUseEffect?.mode === "healTraits"
+      ? selectedInventoryUseEffect.target === "self"
+        ? core.currentExplorer
+        : (healTargetExplorers.find(
+            (explorer) =>
+              explorer.playerId === normalizedInventoryTargetPlayerId,
+          ) ?? null)
+      : null;
+  const selectedInventoryHealPreviewTraits =
+    selectedInventoryUseEffect?.mode === "healTraits"
+      ? selectedInventoryUseEffect.traits
+      : [];
+  const previewInventoryCard =
+    [
+      ...visibleInventoryCards,
+      ...core.currentExplorerInventory,
+      ...core.otherExplorers.flatMap((explorer) => explorer.inventory),
+    ].find((item) => item.id === inventoryPreviewCardId) ?? null;
+
+  return {
+    recentRollInterventionOwner,
+    inventoryActionPlayerId,
+    pendingDiscoveryInventoryCardIds,
+    actionInventoryCards,
+    inventoryDisplayExplorer,
+    isInventoryDisplayReadOnly,
+    visibleInventoryCards,
+    selectedInventoryCard,
+    selectedInventoryUseEffect,
+    selectedInventoryUseEffectMode,
+    selectedInventoryHealTarget,
+    selectedInventoryRollTotalReplacementEffect,
+    selectedInventoryReplacementRollTotal: normalizedReplacementRollTotal,
+    selectedInventoryReplacementRollTotalOptions,
+    healTargetExplorers,
+    selectedInventoryTargetPlayerId: normalizedInventoryTargetPlayerId,
+    selectedInventoryHealPreviewExplorer,
+    selectedInventoryHealPreviewTraits,
+    previewInventoryCard,
+  };
+}
+
+export type BetrayalSelectedInventoryUseState = {
+  needsTargetRoom: boolean;
+  needsPlaceRoom: boolean;
+  needsHealTarget: boolean;
+  needsReplacementRollTotal: boolean;
+  blockedBySpecialActionStatus: boolean;
+  missingTarget: boolean;
+  disabled: boolean;
+  disabledReason: string | null;
+  statusText: string;
+};
+
+export function resolveBetrayalSelectedInventoryUseState({
+  t,
+  selectedInventoryCard,
+  selectedInventoryUseEffectMode,
+  selectedInventoryHealTarget,
+  healTargetExplorerCount,
+  selectedInventoryTargetRoomId,
+  selectedInventoryTargetPlayerId,
+  selectedInventoryReplacementRollTotal,
+  maskTargetTokenIds,
+  selectedMaskTargetRoomIdsByTokenId,
+  selectedCardCanUseRecentRollRerollItem,
+  selectedCardSpecialActionStatus,
+  lastUsedInventoryCardStillUsed,
+}: {
+  t: BetrayalTranslation;
+  selectedInventoryCard: BetrayalInventoryCard | null;
+  selectedInventoryUseEffectMode: PossessionUseEffectProfile["mode"] | null;
+  selectedInventoryHealTarget: "self" | "selfOrSameRoomExplorer" | null;
+  healTargetExplorerCount: number;
+  selectedInventoryTargetRoomId: string | null;
+  selectedInventoryTargetPlayerId: string | null;
+  selectedInventoryReplacementRollTotal: number | null;
+  maskTargetTokenIds: readonly string[];
+  selectedMaskTargetRoomIdsByTokenId: Readonly<Record<string, string>>;
+  selectedCardCanUseRecentRollRerollItem: boolean;
+  selectedCardSpecialActionStatus: BetrayalPossessionSpecialActionStatus | null;
+  lastUsedInventoryCardStillUsed: boolean;
+}): BetrayalSelectedInventoryUseState {
+  const needsTargetRoom = selectedInventoryUseEffectMode === "moveOthersInRoom";
+  const needsPlaceRoom = selectedInventoryUseEffectMode === "placeExplorer";
+  const needsHealTarget =
+    selectedInventoryUseEffectMode === "healTraits" &&
+    selectedInventoryHealTarget === "selfOrSameRoomExplorer" &&
+    healTargetExplorerCount > 0;
+  const needsReplacementRollTotal =
+    selectedInventoryUseEffectMode === "nextNonCombatTraitRollTotalReplacement";
+  const blockedBySpecialActionStatus = Boolean(
+    selectedInventoryCard &&
+    !selectedCardCanUseRecentRollRerollItem &&
+    selectedCardSpecialActionStatus &&
+    !selectedCardSpecialActionStatus.canUse,
+  );
+  const missingTarget =
+    (needsPlaceRoom && !selectedInventoryTargetRoomId) ||
+    (needsHealTarget && !selectedInventoryTargetPlayerId) ||
+    (needsReplacementRollTotal &&
+      selectedInventoryReplacementRollTotal === null) ||
+    (needsTargetRoom &&
+      (maskTargetTokenIds.length === 0 ||
+        maskTargetTokenIds.some(
+          (tokenId) => !selectedMaskTargetRoomIdsByTokenId[tokenId],
+        )));
+  const disabled =
+    !selectedInventoryCard ||
+    Boolean(blockedBySpecialActionStatus || missingTarget);
+  const disabledReason = resolveSelectedInventoryUseDisabledReason({
+    t,
+    selectedInventoryCard,
+    selectedCardSpecialActionStatus,
+    blockedBySpecialActionStatus,
+    missingTarget,
+    needsReplacementRollTotal,
+    selectedInventoryReplacementRollTotal,
+  });
+  const statusText = selectedInventoryCard
+    ? disabled && disabledReason
+      ? disabledReason
+      : t("board.status.usePreview", {
+          effect: resolvePreviewUseEffectLabel(selectedInventoryCard, t),
+        })
+    : lastUsedInventoryCardStillUsed
+      ? t("board.status.cardUsedThisTurn")
+      : t("board.status.noSelectedCard");
+
+  return {
+    needsTargetRoom,
+    needsPlaceRoom,
+    needsHealTarget,
+    needsReplacementRollTotal,
+    blockedBySpecialActionStatus,
+    missingTarget,
+    disabled,
+    disabledReason,
+    statusText,
+  };
+}
+
+export type BetrayalInventoryMaskTargetToken = {
+  id: string;
+  name: string;
+  kind: "explorer" | "monster";
+};
+
+export type BetrayalInventoryRoomTargetReadModel = {
+  maskTargetRooms: BetrayalRoomNode[];
+  inventoryTargetRooms: BetrayalRoomNode[];
+  maskTargetTokens: BetrayalInventoryMaskTargetToken[];
+  selectedMaskTargetRoomIdsByTokenId: Record<string, string>;
+  activeMaskTargetTokenId: string | null;
+  selectedInventoryTargetRoomId: string | null;
+};
+
+export function resolveBetrayalInventoryRoomTargetReadModel({
+  core,
+  selectedInventoryUseEffectMode,
+  selectedInventoryTargetRoomId,
+  selectedMaskTargetRoomIdsByTokenId,
+  activeMaskTargetTokenId,
+  resolvePlayerName,
+}: {
+  core: BetrayalCore;
+  selectedInventoryUseEffectMode: PossessionUseEffectProfile["mode"] | null;
+  selectedInventoryTargetRoomId: string | null;
+  selectedMaskTargetRoomIdsByTokenId: Readonly<Record<string, string>>;
+  activeMaskTargetTokenId: string | null;
+  resolvePlayerName: (playerId: string, displayName: string) => string;
+}): BetrayalInventoryRoomTargetReadModel {
+  const maskTargetRooms = resolveMoveTargetRooms(core);
+  const inventoryTargetRooms = core.rooms.filter(
+    (room) => room.state === "discovered",
+  );
+  const maskTargetTokens =
+    selectedInventoryUseEffectMode === "moveOthersInRoom"
+      ? [
+          ...core.otherExplorers
+            .filter(
+              (explorer) =>
+                explorer.roomId === core.currentExplorer.roomId &&
+                !core.scenarioRuntime.deadExplorerPlayerIds.includes(
+                  explorer.playerId,
+                ),
+            )
+            .map((explorer) => ({
+              id: explorer.playerId,
+              name: resolvePlayerName(explorer.playerId, explorer.displayName),
+              kind: "explorer" as const,
+            })),
+          ...core.monsters
+            .filter((monster) => monster.roomId === core.currentExplorer.roomId)
+            .map((monster) => ({
+              id: monster.id,
+              name: monster.name,
+              kind: "monster" as const,
+            })),
+        ]
+      : [];
+  const normalizedMaskTargetRoomIdsByTokenId =
+    selectedInventoryUseEffectMode === "moveOthersInRoom"
+      ? Object.fromEntries(
+          maskTargetTokens.map((token) => {
+            const selectedRoomId = selectedMaskTargetRoomIdsByTokenId[token.id];
+            const validTargetRoomIds = new Set(
+              maskTargetRooms.map((room) => room.id),
+            );
+            return [
+              token.id,
+              selectedRoomId && validTargetRoomIds.has(selectedRoomId)
+                ? selectedRoomId
+                : "",
+            ];
+          }),
+        )
+      : {};
+  const normalizedActiveMaskTargetTokenId =
+    selectedInventoryUseEffectMode === "moveOthersInRoom"
+      ? maskTargetTokens.some((token) => token.id === activeMaskTargetTokenId)
+        ? activeMaskTargetTokenId
+        : (maskTargetTokens.find(
+            (token) => !normalizedMaskTargetRoomIdsByTokenId[token.id],
+          )?.id ??
+          maskTargetTokens[0]?.id ??
+          null)
+      : null;
+  const normalizedInventoryTargetRoomId =
+    selectedInventoryUseEffectMode === "moveOthersInRoom"
+      ? maskTargetTokens[0]
+        ? (normalizedMaskTargetRoomIdsByTokenId[maskTargetTokens[0].id] ?? null)
+        : null
+      : selectedInventoryUseEffectMode === "placeExplorer"
+        ? inventoryTargetRooms.some(
+            (room) => room.id === selectedInventoryTargetRoomId,
+          )
+          ? selectedInventoryTargetRoomId
+          : null
+        : null;
+
+  return {
+    maskTargetRooms,
+    inventoryTargetRooms,
+    maskTargetTokens,
+    selectedMaskTargetRoomIdsByTokenId: normalizedMaskTargetRoomIdsByTokenId,
+    activeMaskTargetTokenId: normalizedActiveMaskTargetTokenId,
+    selectedInventoryTargetRoomId: normalizedInventoryTargetRoomId,
+  };
+}
+
+export type BetrayalUsePossessionCommandPayload = {
+  cardId: string;
+  targetPlayerId?: string;
+  targetRoomId?: string;
+  targetRoomIdsByTokenId?: Record<string, string>;
+  replacementRollTotal?: number;
+};
+
+export function resolveBetrayalUsePossessionCommandPayload({
+  cardId,
+  selectedInventoryTargetPlayerId,
+  selectedInventoryTargetRoomId,
+  selectedInventoryUseEffectMode,
+  selectedMaskTargetRoomIdsByTokenId,
+  selectedInventoryReplacementRollTotal,
+}: {
+  cardId: string;
+  selectedInventoryTargetPlayerId: string | null;
+  selectedInventoryTargetRoomId: string | null;
+  selectedInventoryUseEffectMode: PossessionUseEffectProfile["mode"] | null;
+  selectedMaskTargetRoomIdsByTokenId: Record<string, string>;
+  selectedInventoryReplacementRollTotal: number | null;
+}): BetrayalUsePossessionCommandPayload {
+  return {
+    cardId,
+    ...(selectedInventoryTargetPlayerId
+      ? { targetPlayerId: selectedInventoryTargetPlayerId }
+      : {}),
+    ...(selectedInventoryTargetRoomId
+      ? { targetRoomId: selectedInventoryTargetRoomId }
+      : {}),
+    ...(selectedInventoryUseEffectMode === "moveOthersInRoom"
+      ? { targetRoomIdsByTokenId: selectedMaskTargetRoomIdsByTokenId }
+      : {}),
+    ...(selectedInventoryUseEffectMode ===
+      "nextNonCombatTraitRollTotalReplacement" &&
+    selectedInventoryReplacementRollTotal !== null
+      ? { replacementRollTotal: selectedInventoryReplacementRollTotal }
+      : {}),
+  };
+}
+
+function resolveSelectedInventoryUseDisabledReason({
+  t,
+  selectedInventoryCard,
+  selectedCardSpecialActionStatus,
+  blockedBySpecialActionStatus,
+  missingTarget,
+  needsReplacementRollTotal,
+  selectedInventoryReplacementRollTotal,
+}: {
+  t: BetrayalTranslation;
+  selectedInventoryCard: BetrayalInventoryCard | null;
+  selectedCardSpecialActionStatus: BetrayalPossessionSpecialActionStatus | null;
+  blockedBySpecialActionStatus: boolean;
+  missingTarget: boolean;
+  needsReplacementRollTotal: boolean;
+  selectedInventoryReplacementRollTotal: number | null;
+}): string | null {
+  if (!selectedInventoryCard) {
+    return t("board.status.noSelectedCard");
+  }
+  if (blockedBySpecialActionStatus) {
+    if (!selectedCardSpecialActionStatus?.active) {
+      return t("board.status.cardNoActiveEffect");
+    }
+    if (selectedCardSpecialActionStatus.usedThisTurn) {
+      return t("board.status.cardUsedThisTurn");
+    }
+    if (
+      !selectedCardSpecialActionStatus.availableAtTurnStart ||
+      selectedCardSpecialActionStatus.receivedThisTurn
+    ) {
+      return t("board.status.cardUnavailableThisTurn");
+    }
+    return (
+      selectedCardSpecialActionStatus.reason ??
+      t("board.status.cardCannotUseNow")
+    );
+  }
+  if (missingTarget) {
+    if (
+      needsReplacementRollTotal &&
+      selectedInventoryReplacementRollTotal === null
+    ) {
+      return "请选择天使之羽的替代投骰结果。";
+    }
+    return t("board.status.cardNeedsTarget");
+  }
+  return null;
+}
+
 export function resolveDamageReductionCardNames(
   explorer: BetrayalExplorerSummary | null,
   damageKind: "physical" | "mental" | "general" | undefined,
@@ -209,7 +719,11 @@ export function resolveDamageReductionCardNames(
     return [];
   }
   const reductionEffectId =
-    damageKind === "physical" ? "armor" : damageKind === "mental" ? "radio" : null;
+    damageKind === "physical"
+      ? "armor"
+      : damageKind === "mental"
+        ? "radio"
+        : null;
   if (!reductionEffectId) {
     return [];
   }

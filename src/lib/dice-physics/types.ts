@@ -6,6 +6,15 @@ export interface DicePhysicsProjectedLayout {
     height: number;
     visualWidth?: number;
     visualHeight?: number;
+    outlineX?: number;
+    outlineY?: number;
+    outlineWidth?: number;
+    outlineHeight?: number;
+    outlineRotateZ?: number;
+    outlinePoints?: Array<{
+        x: number;
+        y: number;
+    }>;
     minX: number;
     maxX: number;
     minY: number;

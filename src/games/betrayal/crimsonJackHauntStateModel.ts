@@ -17,8 +17,8 @@ import { clearNextNonCombatTraitRollReplacementsForPlayer } from './possessionAc
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type JackLearnedEvent = Extract<BetrayalEvent, { type: 'JACK_LEARNED' }>;
 type ExorcismStudiedEvent = Extract<BetrayalEvent, { type: 'EXORCISM_STUDIED' }>;

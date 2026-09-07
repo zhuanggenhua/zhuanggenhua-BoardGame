@@ -38,11 +38,11 @@ import { resolveRecommendedAction } from './recommendedActionReadModel';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
     BetrayalPendingDamageAllocationState,
     BetrayalRecentRollState,
     BetrayalTurnEndedPayload,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type TurnEndedEvent = Extract<BetrayalEvent, { type: 'TURN_ENDED' }>;
 type TurnEndRollAcknowledgedEvent = Extract<BetrayalEvent, { type: 'TURN_END_ROLL_ACKNOWLEDGED' }>;

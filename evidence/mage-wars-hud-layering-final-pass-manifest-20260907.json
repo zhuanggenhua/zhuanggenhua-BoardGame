@@ -1,0 +1,88 @@
+{
+  "verdict": "PASS",
+  "scope": "current-user-request",
+  "display": {
+    "purpose": "final-user-visible-delivery",
+    "trigger": "task-final-delivery",
+    "viewer": "pureref",
+    "finalPassBeforeOpen": true
+  },
+  "requirements": [
+    {
+      "requirement": "己方 HUD / 属性 / 提示卡属于左下顶层界面锚点，不再因为 A2、首列或场上实体横向避让。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：己方 HUD left 保持 var(--mage-wars-desktop-side-inset)，data-layout-position=self-lower-left。",
+        ".spec/knowledge/standards/ui-ux.md 与 .spec/knowledge/standards/ui-change-gates.md：补入顶层 HUD 不由棋盘实体、底图或场景缩放驱动的通用规则。",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"真实入口加载正式牌桌素材并落桌面验收截图\" -> 1 passed"
+      ]
+    },
+    {
+      "requirement": "HUD 提示卡本体和属性图标显示层必须点击透传；只有放大镜、眼睛、关闭、切换、提交等真实控件命中。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：mage-wars-mage-hud-hint-card 与 mage-wars-mage-hud-stat-icon 标记 data-hud-hit-surface=visual-pass-through，外层 pointer-events-none。",
+        "src/games/mage-wars/__tests__/Board.fx.test.tsx：整张提示卡点击 / Enter 不放大，右上放大镜才打开法师描述卡。",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：用 elementFromPoint 断言 A2 当前可操作灰天使主体点击点不命中 HUD 提示卡或属性图标。"
+      ]
+    },
+    {
+      "requirement": "法师行动 / 快速施法 / 守卫 token 不得和中央生命读数重叠；生物仍保留左侧竖列 token 语法。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：法师 EntityStatusTokenRail 使用 data-token-rail-layout=split-around-life-readout，行动在左上、快速施法在左下、守卫在右上。",
+        "src/games/mage-wars/__tests__/Board.fx.test.tsx：单测分别断言生物 token 仍是左侧竖列，法师 token 改为四角分槽。",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"真实入口加载正式牌桌素材并落桌面验收截图\" -> 1 passed，并量测行动 / 快速施法 token 与生命读数不相交。"
+      ]
+    },
+    {
+      "requirement": "属性图标必须有玩家可见 hover / focus 说明，并在 E2E 中逐个截图到。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：属性图标保留 hover / focus tooltip，tooltip 文本包含当前值 / 上限。",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"2560x1304 真实入口验证放大镜悬浮、宽屏布局和地图自由查看\" -> 1 passed",
+        "test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/：己方生命 / 法力 / 聚魔与对手生命 / 法力 / 聚魔 6 张 tooltip 截图均已更新。"
+      ]
+    },
+    {
+      "requirement": "2560x1304 宽屏下地图拖拽后仍是自由查看，不是被固定在内框里；HUD 不跟随地图移动。",
+      "status": "PASS",
+      "evidence": [
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"2560x1304 真实入口验证放大镜悬浮、宽屏布局和地图自由查看\" -> 1 passed",
+        "test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-map-dragged.png：拖拽后的地图自由查看证据。",
+        "test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-board.png：宽屏默认布局对照证据。"
+      ]
+    }
+  ],
+  "images": [
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/00-sequence-index.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/01-labeled-e2e-desktop-board.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/02-labeled-e2e-desktop-six-per-side-lane-wrap.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/03-labeled-e2e-desktop-2560x1304-board.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/04-labeled-e2e-desktop-2560x1304-planning-hover.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/05-labeled-e2e-desktop-2560x1304-map-dragged.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/06-labeled-01-self-life-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/07-labeled-02-self-mana-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/08-labeled-03-self-channeling-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/09-labeled-04-opponent-life-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/10-labeled-05-opponent-mana-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/_labeled-for-pureref/hud-layering-20260907/11-labeled-06-opponent-channeling-tip.png"
+  ],
+  "sourceImages": [
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-board.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-six-per-side-lane-wrap.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-board.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-planning-hover.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-map-dragged.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/01-self-life-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/02-self-mana-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/03-self-channeling-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/04-opponent-life-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/05-opponent-mana-tip.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/hud-icon-tooltips-2560x1304/06-opponent-channeling-tip.png"
+  ],
+  "notes": [
+    "本清单只覆盖本轮 HUD 分层、点击命中、token 分槽、属性 tooltip 和地图自由查看，不代表 Mage Wars 全游戏完整验收。",
+    "Betrayal 与其它未关联脏树改动未纳入本轮 PASS 范围。"
+  ]
+}

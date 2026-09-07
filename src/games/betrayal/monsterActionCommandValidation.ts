@@ -1,9 +1,7 @@
 import type { ValidationResult } from '../../engine/types';
 import { BETRAYAL_COMMANDS } from './commands';
-import type {
-    BetrayalCommand,
-    BetrayalCore,
-} from './game';
+import type { BetrayalCore } from './game';
+import type { BetrayalCommand } from './commandTypes';
 import { isStoneCherubMonster } from './hauntScenarioReadModel';
 import {
     hasMummyTeleportMoveAvailable,

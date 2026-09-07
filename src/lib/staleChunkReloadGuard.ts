@@ -6,14 +6,17 @@ export const isStaleChunkError = (value: unknown): boolean => {
     const message = value instanceof Error
         ? `${value.name}: ${value.message}`
         : String(value ?? '');
+    const stack = value instanceof Error ? value.stack ?? '' : '';
 
-    const normalized = message.toLowerCase();
+    const normalized = `${message}\n${stack}`.toLowerCase();
     return normalized.includes(STALE_LAZY_MODULE_MARKER)
         || normalized.includes('failed to fetch dynamically imported module')
         || normalized.includes('error loading dynamically imported module')
         || normalized.includes('importing a module script failed')
         || normalized.includes('expected a javascript module script')
         || normalized.includes('is not a valid javascript mime type')
+        || (normalized.includes("typeerror: cannot read properties of undefined (reading 'default')")
+            && normalized.includes('/assets/vendor-react'))
         || normalized.includes('chunkloaderror')
         || normalized.includes('loading chunk');
 };

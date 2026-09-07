@@ -20,11 +20,9 @@ import {
     resolveRecentRollRerollItemCard,
     resolveRecentRollRerollItemRule,
 } from './possessionActionReadModel';
-import type {
-    BetrayalCommand,
-    BetrayalCore,
-    BetrayalEvent,
-} from './game';
+import type { BetrayalCore } from './game';
+import type { BetrayalCommand } from './commandTypes';
+import type { BetrayalEvent } from './events';
 
 type RecentRollRerollCommand = Extract<
     BetrayalCommand,

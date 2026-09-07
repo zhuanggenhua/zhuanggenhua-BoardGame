@@ -5,10 +5,10 @@ import {
 } from "../helpers/common";
 import { expectNoDuplicateUiOwners } from "../helpers/uiDuplicateOwners";
 import {
-  BETRAYAL_COMMANDS,
-  type BetrayalCore,
-  type BetrayalTraitKey,
+    type BetrayalCore,
+    type BetrayalTraitKey,
 } from "../../src/games/betrayal/game";
+import { BETRAYAL_COMMANDS } from "../../src/games/betrayal/commands";
 import { BETRAYAL_DISCOVERY_POOLS } from "../../src/games/betrayal/scenarioConfig";
 import {
   createRuntimeCore,

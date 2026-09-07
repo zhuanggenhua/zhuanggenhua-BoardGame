@@ -18,8 +18,8 @@ import { moveExplorerTraitSteps } from './traitTrackModel';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type PhotoTakenEvent = Extract<BetrayalEvent, { type: 'PHOTO_TAKEN' }>;
 type MagicCameraSmashedEvent = Extract<BetrayalEvent, { type: 'MAGIC_CAMERA_SMASHED' }>;

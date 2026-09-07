@@ -46,9 +46,9 @@ import {
 } from './traitTrackModel';
 import type {
     BetrayalCore,
-    BetrayalEvent,
     BetrayalExplorerSummary,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type HauntTriggeredEvent = Extract<BetrayalEvent, { type: 'HAUNT_TRIGGERED' }>;
 

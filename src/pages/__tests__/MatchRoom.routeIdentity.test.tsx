@@ -27,6 +27,7 @@ async function loadMatchRoomWithOnlineMocks(args?: {
     const clearMatchCredentialsSpy = vi.fn();
 
     vi.doMock('react-i18next', () => ({
+        initReactI18next: { type: '3rdParty', init: vi.fn() },
         useTranslation: () => ({
             t: (key: string) => key,
             i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' },

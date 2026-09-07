@@ -35,7 +35,7 @@ export const BETRAYAL_HOUSE_DICE_MOBILE_STYLE_PROFILE = {
 } satisfies DiceBoxStyleProfile;
 
 export const BETRAYAL_HOUSE_DICE_FACE_SYSTEM =
-  "betrayal-house-0-1-2-per-die-skin";
+  "betrayal-house-0-0-1-1-2-2-face-skin";
 
 const BETRAYAL_HOUSE_RULE_VALUE_TO_D6_FACE: Record<0 | 1 | 2, number> = {
   0: 1,
@@ -54,14 +54,12 @@ export const BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE: Record<number, 0 | 1 | 2> = {
 
 export const BETRAYAL_REROLL_HIGHLIGHT_CANDIDATE_COLOR = 0x00e7ff;
 export const BETRAYAL_REROLL_HIGHLIGHT_SELECTED_COLOR = 0xffd447;
-export const BETRAYAL_REROLL_CANDIDATE_UNDERLINE_RENDERER =
-  "dom-bottom-underline";
-export const BETRAYAL_REROLL_SELECTED_HIGHLIGHT_RENDERER =
-  "threejs-backside-shader-shell";
 export const BETRAYAL_REROLL_HIGHLIGHT_RENDERER =
-  "candidate-bottom-underline-selected-threejs-shell";
-export const BETRAYAL_REROLL_HIGHLIGHT_CANDIDATE_SCALE = 1.035;
-export const BETRAYAL_REROLL_HIGHLIGHT_SELECTED_SCALE = 1.055;
+  "threejs-backside-shader-shell";
+export const BETRAYAL_REROLL_VISUAL_CONTRACT =
+  "projected-face-svg-outline-plus-threejs-shell";
+export const BETRAYAL_REROLL_HIGHLIGHT_CANDIDATE_SCALE = 1.045;
+export const BETRAYAL_REROLL_HIGHLIGHT_SELECTED_SCALE = 1.065;
 export const BETRAYAL_REROLL_HIGHLIGHT_CANDIDATE_OPACITY = 1;
 export const BETRAYAL_REROLL_HIGHLIGHT_SELECTED_OPACITY = 1;
 
@@ -252,9 +250,32 @@ export function getBetrayalRerollTargetVisibleSize(
   layout: DicePhysicsProjectedLayout,
 ) {
   return {
-    width: layout.visualWidth ?? layout.width,
-    height: layout.visualHeight ?? layout.height,
+    width: layout.outlineWidth ?? layout.visualWidth ?? layout.width,
+    height: layout.outlineHeight ?? layout.visualHeight ?? layout.height,
   };
+}
+
+export function getBetrayalRerollTargetVisualCenter(
+  layout: DicePhysicsProjectedLayout,
+) {
+  return {
+    x: layout.outlineX ?? layout.x,
+    y: layout.outlineY ?? layout.y,
+  };
+}
+
+export function getBetrayalRerollTargetVisualRotation(
+  layout: DicePhysicsProjectedLayout,
+): number {
+  return layout.outlineRotateZ ?? layout.rotateZ;
+}
+
+export function getBetrayalRerollTargetOutlinePoints(
+  layout: DicePhysicsProjectedLayout,
+) {
+  return Array.isArray(layout.outlinePoints) && layout.outlinePoints.length >= 3
+    ? layout.outlinePoints
+    : null;
 }
 
 export function createBetrayalHouseDiceSkin(
@@ -266,20 +287,19 @@ export function createBetrayalHouseDiceSkin(
     2: getBetrayalHouseDieFaceCanvas(2),
   };
   const edgeCanvas = getBetrayalHouseDieEdgeCanvas();
-  const visibleValueCanvas = ruleFaceCanvases[value];
   const faceCanvases: Record<number, HTMLCanvasElement> = {
-    1: visibleValueCanvas,
-    2: visibleValueCanvas,
-    3: visibleValueCanvas,
-    4: visibleValueCanvas,
-    5: visibleValueCanvas,
-    6: visibleValueCanvas,
+    1: ruleFaceCanvases[BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE[1]],
+    2: ruleFaceCanvases[BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE[2]],
+    3: ruleFaceCanvases[BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE[3]],
+    4: ruleFaceCanvases[BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE[4]],
+    5: ruleFaceCanvases[BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE[5]],
+    6: ruleFaceCanvases[BETRAYAL_HOUSE_D6_FACE_TO_RULE_VALUE[6]],
   };
 
   return {
-    id: `${BETRAYAL_HOUSE_DICE_FACE_SYSTEM}-${value}`,
+    id: `${BETRAYAL_HOUSE_DICE_FACE_SYSTEM}-physical-distribution`,
     edgeCanvas,
     faceCanvases,
-    topFaceCanvas: visibleValueCanvas,
+    topFaceCanvas: ruleFaceCanvases[value],
   };
 }

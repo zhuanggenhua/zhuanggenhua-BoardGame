@@ -1,4 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import {
+    describe,
+    expect,
+    it,
+} from 'vitest';
 import enLocale from '../../../../public/locales/en/game-betrayal.json';
 import zhCNLocale from '../../../../public/locales/zh-CN/game-betrayal.json';
 import {
@@ -7,21 +11,28 @@ import {
     executePipeline,
 } from '../../../engine/pipeline';
 import { buildActionLogRows } from '../../../components/game/utils/actionLogFormat';
-import { setUndoAiSeatIds, UNDO_COMMANDS } from '../../../engine/systems/UndoSystem';
-import type { Command, MatchState, RandomFn } from '../../../engine/types';
+import {
+    setUndoAiSeatIds,
+    UNDO_COMMANDS,
+} from '../../../engine/systems/UndoSystem';
+import type {
+    Command,
+    MatchState,
+    RandomFn,
+} from '../../../engine/types';
 import {
     BETRAYAL_ACTION_LOG_ALLOWLIST,
     BETRAYAL_UNDO_ALLOWLIST,
     formatBetrayalActionEntry,
 } from '../actionLog';
 import {
-    BETRAYAL_COMMANDS,
     engineConfig,
     EXPLORER_CATALOG,
-    type BetrayalCommand,
     type BetrayalCore,
     type BetrayalTraitKey,
 } from '../game';
+import { BETRAYAL_COMMANDS } from '../commands';
+import type { BetrayalCommand } from '../commandTypes';
 import { BETRAYAL_DISCOVERY_POOLS } from '../scenarioConfig';
 import {
     createBetrayalScriptedRandom,

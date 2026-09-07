@@ -11,9 +11,9 @@ import {
 } from './explorerReadModel';
 import type {
     BetrayalCore,
-    BetrayalEvent,
     BetrayalTurnEndedPayload,
 } from './game';
+import type { BetrayalEvent } from './events';
 import {
     isHelpingHandsHaunt,
     isMagicCameraHaunt,

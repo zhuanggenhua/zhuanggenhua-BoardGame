@@ -78,7 +78,9 @@ type DiceBoxInternalNotationVector = {
 
 type DiceBoxInternalRuntime = InstanceType<typeof DiceBoxModule> & {
     iteration?: number;
+    last_time?: number;
     notationVectors?: DiceBoxInternalNotationVector | null;
+    reroll?: (indices: number[]) => Promise<unknown>;
     startClickThrow?: (notation: string) => DiceBoxInternalNotationVector | null;
     spawnDice?: (vector: DiceBoxThrowVector, die?: DiceBoxDie) => void;
     simulateThrow?: () => void;
@@ -111,6 +113,13 @@ type DiceBoxQuaternionLike = {
     w: number;
     copy?: (quaternion: DiceBoxQuaternionLike) => void;
     set?: (x: number, y: number, z: number, w: number) => void;
+};
+
+type DiceBoxQuaternionSnapshot = {
+    x: number;
+    y: number;
+    z: number;
+    w: number;
 };
 
 type DiceBoxBodyLike = {
@@ -172,6 +181,27 @@ type DiceBoxWorldBounds = {
     height: number;
 };
 
+type DiceBoxProjectedPoint = {
+    x: number;
+    y: number;
+};
+
+type DiceBoxProjectedOrientedBounds = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    rotateZ: number;
+};
+
+type DiceBoxProjectedFaceOutline = {
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    points: DiceBoxProjectedPoint[];
+};
+
 type DiceBoxHighlightShell = {
     dieId: number;
     dieIndex: number;
@@ -231,6 +261,214 @@ const DEFAULT_DICE_BOX_STYLE_PROFILE: DiceBoxStyleProfile = {
 
 function usesTransparentVirtualSurface(styleProfile: DiceBoxStyleProfile): boolean {
     return styleProfile.surface === 'transparent' || styleProfile.surface === 'transparent-virtual';
+}
+
+function normalizeProjectedAngle(angle: number): number {
+    let normalized = angle;
+    while (normalized <= -Math.PI / 2) normalized += Math.PI;
+    while (normalized > Math.PI / 2) normalized -= Math.PI;
+    return normalized;
+}
+
+function computeProjectedOrientedBounds(
+    points: DiceBoxProjectedPoint[],
+): DiceBoxProjectedOrientedBounds | null {
+    if (points.length < 2) return null;
+
+    const candidateAngles = new Set<string>(['0.000000']);
+    for (let leftIndex = 0; leftIndex < points.length; leftIndex += 1) {
+        for (let rightIndex = leftIndex + 1; rightIndex < points.length; rightIndex += 1) {
+            const left = points[leftIndex];
+            const right = points[rightIndex];
+            const dx = right.x - left.x;
+            const dy = right.y - left.y;
+            if (Math.hypot(dx, dy) < 0.5) continue;
+            candidateAngles.add(normalizeProjectedAngle(Math.atan2(dy, dx)).toFixed(6));
+        }
+    }
+
+    let best:
+        | (DiceBoxProjectedOrientedBounds & {
+              area: number;
+          })
+        | null = null;
+    for (const angleKey of candidateAngles) {
+        const rotateZ = Number(angleKey);
+        if (!Number.isFinite(rotateZ)) continue;
+        const cos = Math.cos(rotateZ);
+        const sin = Math.sin(rotateZ);
+        let minU = Number.POSITIVE_INFINITY;
+        let maxU = Number.NEGATIVE_INFINITY;
+        let minV = Number.POSITIVE_INFINITY;
+        let maxV = Number.NEGATIVE_INFINITY;
+        for (const point of points) {
+            const u = point.x * cos + point.y * sin;
+            const v = -point.x * sin + point.y * cos;
+            minU = Math.min(minU, u);
+            maxU = Math.max(maxU, u);
+            minV = Math.min(minV, v);
+            maxV = Math.max(maxV, v);
+        }
+        const width = Math.max(1, maxU - minU);
+        const height = Math.max(1, maxV - minV);
+        const area = width * height;
+        if (!Number.isFinite(area)) continue;
+        if (best && area >= best.area - 0.01) continue;
+
+        const centerU = (minU + maxU) / 2;
+        const centerV = (minV + maxV) / 2;
+        best = {
+            area,
+            x: centerU * cos - centerV * sin,
+            y: centerU * sin + centerV * cos,
+            width,
+            height,
+            rotateZ,
+        };
+    }
+
+    return best;
+}
+
+function computeProjectedFaceOutline(
+    bounds: { min: Vector3; max: Vector3 },
+    matrixWorld: DiceBoxDie['matrixWorld'],
+    camera: unknown,
+    canvas: HTMLCanvasElement,
+    projectLocalPoint: (x: number, y: number, z: number) => DiceBoxProjectedPoint,
+): DiceBoxProjectedFaceOutline | null {
+    const { min, max } = bounds;
+    const cameraWorldPosition = new Vector3();
+    const getCameraWorldPosition = (camera as {
+        getWorldPosition?: (target: Vector3) => Vector3;
+        position?: Vector3;
+    }).getWorldPosition;
+    if (typeof getCameraWorldPosition === 'function') {
+        getCameraWorldPosition.call(camera, cameraWorldPosition);
+    } else {
+        const position = (camera as { position?: Vector3 }).position;
+        if (!position) return null;
+        cameraWorldPosition.copy(position);
+    }
+
+    type FaceCandidate = {
+        normal: [number, number, number];
+        corners: Array<[number, number, number]>;
+    };
+
+    const faces: FaceCandidate[] = [
+        {
+            normal: [1, 0, 0],
+            corners: [
+                [max.x, min.y, min.z],
+                [max.x, max.y, min.z],
+                [max.x, max.y, max.z],
+                [max.x, min.y, max.z],
+            ],
+        },
+        {
+            normal: [-1, 0, 0],
+            corners: [
+                [min.x, min.y, max.z],
+                [min.x, max.y, max.z],
+                [min.x, max.y, min.z],
+                [min.x, min.y, min.z],
+            ],
+        },
+        {
+            normal: [0, 1, 0],
+            corners: [
+                [min.x, max.y, min.z],
+                [min.x, max.y, max.z],
+                [max.x, max.y, max.z],
+                [max.x, max.y, min.z],
+            ],
+        },
+        {
+            normal: [0, -1, 0],
+            corners: [
+                [min.x, min.y, max.z],
+                [min.x, min.y, min.z],
+                [max.x, min.y, min.z],
+                [max.x, min.y, max.z],
+            ],
+        },
+        {
+            normal: [0, 0, 1],
+            corners: [
+                [min.x, min.y, max.z],
+                [max.x, min.y, max.z],
+                [max.x, max.y, max.z],
+                [min.x, max.y, max.z],
+            ],
+        },
+        {
+            normal: [0, 0, -1],
+            corners: [
+                [max.x, min.y, min.z],
+                [min.x, min.y, min.z],
+                [min.x, max.y, min.z],
+                [max.x, max.y, min.z],
+            ],
+        },
+    ];
+
+    let best:
+        | {
+              face: FaceCandidate;
+              score: number;
+          }
+        | null = null;
+    for (const face of faces) {
+        const faceCenter = new Vector3();
+        for (const [x, y, z] of face.corners) {
+            faceCenter.x += x;
+            faceCenter.y += y;
+            faceCenter.z += z;
+        }
+        faceCenter.multiplyScalar(1 / face.corners.length);
+        faceCenter.applyMatrix4(matrixWorld);
+        const worldNormal = new Vector3(...face.normal).transformDirection(matrixWorld);
+        const toCamera = cameraWorldPosition.clone().sub(faceCenter);
+        if (toCamera.lengthSq() <= 0.000001) continue;
+        toCamera.normalize();
+        const score = worldNormal.dot(toCamera);
+        if (!Number.isFinite(score)) continue;
+        if (!best || score > best.score) {
+            best = { face, score };
+        }
+    }
+
+    if (!best || best.score <= 0.02) return null;
+
+    const points = best.face.corners.map(([x, y, z]) => projectLocalPoint(x, y, z));
+    if (
+        points.some(
+            (point) =>
+                !Number.isFinite(point.x) ||
+                !Number.isFinite(point.y) ||
+                point.x < -canvas.clientWidth ||
+                point.x > canvas.clientWidth * 2 ||
+                point.y < -canvas.clientHeight ||
+                point.y > canvas.clientHeight * 2,
+        )
+    ) {
+        return null;
+    }
+
+    const minX = Math.min(...points.map((point) => point.x));
+    const maxX = Math.max(...points.map((point) => point.x));
+    const minY = Math.min(...points.map((point) => point.y));
+    const maxY = Math.max(...points.map((point) => point.y));
+    const width = Math.max(1, maxX - minX);
+    const height = Math.max(1, maxY - minY);
+    return {
+        x: (minX + maxX) / 2,
+        y: (minY + maxY) / 2,
+        width,
+        height,
+        points,
+    };
 }
 
 function resolveThemeSurface(styleProfile: DiceBoxStyleProfile): string {
@@ -301,6 +539,22 @@ function createNotation(values: number[]): string {
 function readDieValue(die: DiceBoxDie | undefined): number | null {
     const value = die?.getLastValue?.().value;
     return typeof value === 'number' ? value : null;
+}
+
+function createQuaternionFromEulerXYZ(x: number, y: number, z: number): DiceBoxQuaternionSnapshot {
+    const c1 = Math.cos(x / 2);
+    const c2 = Math.cos(y / 2);
+    const c3 = Math.cos(z / 2);
+    const s1 = Math.sin(x / 2);
+    const s2 = Math.sin(y / 2);
+    const s3 = Math.sin(z / 2);
+
+    return {
+        x: s1 * c2 * c3 + c1 * s2 * s3,
+        y: c1 * s2 * c3 - s1 * c2 * s3,
+        z: c1 * c2 * s3 + s1 * s2 * c3,
+        w: c1 * c2 * c3 - s1 * s2 * s3,
+    };
 }
 
 export class DiceBoxThreeEngine {
@@ -471,6 +725,8 @@ export class DiceBoxThreeEngine {
         this.nudgeDiceIntoProjectedMargins();
         this.separateProjectedDice();
         this.nudgeDiceIntoProjectedMargins();
+        this.separateProjectedDice();
+        this.nudgeDiceIntoProjectedMargins();
     }
 
     private separateProjectedDice(): void {
@@ -481,7 +737,7 @@ export class DiceBoxThreeEngine {
         if (minGap <= 0 || !canvas || canvasWidth <= 0 || canvasHeight <= 0 || this.box.diceList.length < 2) return;
 
         let didNudge = false;
-        const maxPasses = 6;
+        const maxPasses = 12;
         for (let pass = 0; pass < maxPasses; pass += 1) {
             const layouts = this.box.diceList.map((_, index) => this.getProjectedLayout(index, index));
             const deltas = this.box.diceList.map(() => ({ x: 0, y: 0 }));
@@ -498,17 +754,28 @@ export class DiceBoxThreeEngine {
                     const rightHeight = right.visualHeight ?? right.height;
                     const dx = left.x - right.x;
                     const dy = left.y - right.y;
+                    const centerDistance = Math.hypot(dx, dy);
+                    const averageMinDimension = (
+                        Math.min(leftWidth, leftHeight) + Math.min(rightWidth, rightHeight)
+                    ) / 2;
+                    const requiredCenterDistance = averageMinDimension * 1.08;
+                    const centerShortfall = requiredCenterDistance - centerDistance;
                     const requiredX = (leftWidth + rightWidth) / 2 + minGap;
                     const requiredY = (leftHeight + rightHeight) / 2 + minGap;
                     const overlapX = requiredX - Math.abs(dx);
                     const overlapY = requiredY - Math.abs(dy);
-                    if (overlapX <= 0 || overlapY <= 0) continue;
+                    if ((overlapX <= 0 || overlapY <= 0) && centerShortfall <= 0) continue;
 
-                    const resolveOnX = overlapX <= overlapY;
+                    const resolveOnX = overlapX > 0 && overlapY > 0
+                        ? overlapX <= overlapY
+                        : Math.abs(dx) >= Math.abs(dy);
                     const direction = resolveOnX
                         ? (dx === 0 ? (leftIndex < rightIndex ? -1 : 1) : Math.sign(dx))
                         : (dy === 0 ? (leftIndex < rightIndex ? -1 : 1) : Math.sign(dy));
-                    const correction = Math.min(34, (resolveOnX ? overlapX : overlapY) / 2 + 0.75);
+                    const axisShortfall = resolveOnX
+                        ? Math.max(overlapX > 0 && overlapY > 0 ? overlapX : 0, centerShortfall)
+                        : Math.max(overlapX > 0 && overlapY > 0 ? overlapY : 0, centerShortfall);
+                    const correction = Math.min(40, axisShortfall / 2 + 0.75);
                     if (resolveOnX) {
                         deltas[leftIndex].x += direction * correction;
                         deltas[rightIndex].x -= direction * correction;
@@ -992,10 +1259,14 @@ export class DiceBoxThreeEngine {
         this.freezeDice(lockedSnapshots);
         let shouldFinalize = false;
         try {
-            await this.box.reroll(indices);
+            const didUsePhysicalReroll = await this.playPhysicalReroll(indices);
+            if (!didUsePhysicalReroll) {
+                await this.playContainedRerollSpin(indices);
+            }
             this.restoreDieTransforms(lockedSnapshots, true);
             this.applyValues(values, indices, true);
             this.applyCurrentSkins();
+            this.syncDiceHighlightShells();
             shouldFinalize = true;
         } finally {
             this.restoreDieTransforms(lockedSnapshots, false);
@@ -1005,19 +1276,65 @@ export class DiceBoxThreeEngine {
         }
     }
 
-    async playRerollLaunchPreview(indices: number[], durationMs: number): Promise<void> {
+    private async playPhysicalReroll(indices: number[]): Promise<boolean> {
+        const runtime = this.box as DiceBoxInternalRuntime;
+        if (typeof runtime.reroll !== 'function') return false;
+
+        // dice-box-threejs does not reset this clock in reroll(); a stale value can
+        // make the first animation tick simulate the whole throw and look like a flash.
+        runtime.last_time = 0;
+        runtime.steps = 0;
+
+        const stopSyncLoop = this.startPhysicalRerollSyncLoop();
+        try {
+            await runtime.reroll.call(runtime, indices);
+        } finally {
+            stopSyncLoop();
+            this.syncDiceHighlightShells();
+            this.renderFrame();
+        }
+        return true;
+    }
+
+    private startPhysicalRerollSyncLoop(): () => void {
+        if (typeof window === 'undefined' || typeof window.requestAnimationFrame !== 'function') {
+            return () => undefined;
+        }
+
+        let frameId: number | null = null;
+        let stopped = false;
+        const step = () => {
+            if (stopped) return;
+            this.syncDiceHighlightShells();
+            frameId = window.requestAnimationFrame(step);
+        };
+        frameId = window.requestAnimationFrame(step);
+
+        return () => {
+            stopped = true;
+            if (frameId !== null && typeof window.cancelAnimationFrame === 'function') {
+                window.cancelAnimationFrame(frameId);
+            }
+            frameId = null;
+        };
+    }
+
+    private async playContainedRerollSpin(indices: number[], durationMs = 900): Promise<void> {
         if (indices.length === 0) return;
 
-        type RerollPreviewSnapshot = {
-            die: DiceBoxDieWithBody & { rotation?: DiceBoxVectorLike; updateMatrixWorld?: (force?: boolean) => void };
+        type RerollSpinSnapshot = {
+            die: DiceBoxDieWithBody & {
+                rotation?: DiceBoxVectorLike;
+                updateMatrixWorld?: (force?: boolean) => void;
+            };
             position: { x: number; y: number; z: number };
             rotation: { x: number; y: number; z: number } | null;
             order: number;
         };
 
         const snapshots = indices
-            .map((index, order): RerollPreviewSnapshot | null => {
-                const die = this.box.diceList[index] as RerollPreviewSnapshot['die'] | undefined;
+            .map((index, order): RerollSpinSnapshot | null => {
+                const die = this.box.diceList[index] as RerollSpinSnapshot['die'] | undefined;
                 if (!die) return null;
                 return {
                     die,
@@ -1036,14 +1353,14 @@ export class DiceBoxThreeEngine {
                     order,
                 };
             })
-            .filter((snapshot): snapshot is RerollPreviewSnapshot => Boolean(snapshot));
+            .filter((snapshot): snapshot is RerollSpinSnapshot => Boolean(snapshot));
         if (snapshots.length === 0) return;
 
-        const baseScale = this.styleProfile.baseScale ?? 64;
-        const lift = Math.max(14, Math.min(22, baseScale * 0.24));
-        const screenLateral = Math.max(80, Math.min(112, baseScale * 1.25));
-        const screenLift = Math.max(42, Math.min(64, baseScale * 0.72));
-        const firstVisibleProgress = 0.22;
+        const baseScale = this.styleProfile.baseScale ?? DEFAULT_DICE_BOX_STYLE_PROFILE.baseScale ?? 64;
+        const lift = Math.max(5, Math.min(9, baseScale * 0.1));
+        const sideTravel = Math.max(3.5, Math.min(8, baseScale * 0.075));
+        const duration = Math.max(240, durationMs);
+
         await new Promise<void>((resolve) => {
             let startAt: number | null = null;
             let frameId: number | null = null;
@@ -1067,49 +1384,34 @@ export class DiceBoxThreeEngine {
                 if (completed) return;
                 clearScheduledStep();
                 if (startAt === null) {
-                    startAt = now - Math.max(1, durationMs) * firstVisibleProgress;
+                    startAt = now;
                 }
-                const duration = Math.max(1, durationMs);
                 const progress = Math.min(1, Math.max(0, (now - startAt) / duration));
-                const pulse = Math.sin(progress * Math.PI);
-                const spin = progress * Math.PI * 2;
-                for (const snapshot of snapshots) {
-                    const direction = snapshot.order % 2 === 0 ? -1 : 1;
-                    this.setVector(snapshot.die.position, snapshot.position);
-                    if (snapshot.die.body) {
-                        this.setVector(snapshot.die.body.position, snapshot.position);
-                        this.setVector(snapshot.die.body.velocity, { x: 0, y: 0, z: 0 });
-                        this.setVector(snapshot.die.body.angularVelocity, { x: 0, y: 0, z: 0 });
-                        snapshot.die.body.aabbNeedsUpdate = true;
-                    }
-                    snapshot.die.updateMatrixWorld?.(true);
-                    this.box.scene?.updateMatrixWorld?.(true);
+                const eased = progress < 0.5
+                    ? 2 * progress * progress
+                    : 1 - Math.pow(-2 * progress + 2, 2) / 2;
+                const liftPulse = Math.sin(progress * Math.PI);
+                const spin = eased * Math.PI * 4;
 
-                    const layout = this.getProjectedLayout(indices[snapshot.order] ?? snapshot.order, snapshot.order);
-                    const canvas = this.box.renderer?.domElement;
-                    const translated = layout && canvas
-                        ? this.translateDieByScreenDelta(
-                            snapshot.die,
-                            layout,
-                            direction * screenLateral * pulse,
-                            -screenLift * pulse,
-                            canvas.clientWidth,
-                            canvas.clientHeight,
-                        )
-                        : false;
-                    if (!translated) {
-                        this.setVector(snapshot.die.position, {
-                            x: snapshot.position.x + direction * (baseScale * 0.18) * pulse,
-                            y: snapshot.position.y + (baseScale * 0.12) * pulse,
-                            z: snapshot.position.z + lift * pulse,
-                        });
-                    }
+                for (const snapshot of snapshots) {
+                    const direction = snapshot.order % 2 === 0 ? 1 : -1;
+                    const lateralPulse = Math.sin(progress * Math.PI * 2);
+                    const forwardPulse = Math.sin(progress * Math.PI);
+                    this.setVector(snapshot.die.position, {
+                        x: snapshot.position.x + sideTravel * lateralPulse * direction,
+                        y: snapshot.position.y + sideTravel * 0.36 * forwardPulse,
+                        z: snapshot.position.z + lift * liftPulse,
+                    });
                     if (snapshot.rotation && snapshot.die.rotation) {
-                        this.setVector(snapshot.die.rotation, {
-                            x: snapshot.rotation.x + spin * 0.62,
-                            y: snapshot.rotation.y + direction * spin * 0.48,
-                            z: snapshot.rotation.z + spin * 0.36,
-                        });
+                        const rotation = {
+                            x: snapshot.rotation.x + spin * 0.85,
+                            y: snapshot.rotation.y + direction * spin * 0.72,
+                            z: snapshot.rotation.z + liftPulse * direction * 0.38,
+                        };
+                        const quaternion = createQuaternionFromEulerXYZ(rotation.x, rotation.y, rotation.z);
+                        this.setVector(snapshot.die.rotation, rotation);
+                        this.setQuaternion(snapshot.die.quaternion as DiceBoxQuaternionLike | undefined, quaternion);
+                        this.setQuaternion(snapshot.die.body?.quaternion, quaternion);
                     }
                     if (snapshot.die.body) {
                         this.setVector(snapshot.die.body.position, {
@@ -1123,53 +1425,43 @@ export class DiceBoxThreeEngine {
                     }
                     snapshot.die.updateMatrixWorld?.(true);
                 }
+                this.box.scene?.updateMatrixWorld?.(true);
                 this.syncDiceHighlightShells();
                 this.renderFrame();
+
                 if (progress >= 1) {
                     completed = true;
+                    for (const snapshot of snapshots) {
+                        this.setVector(snapshot.die.position, snapshot.position);
+                        if (snapshot.rotation && snapshot.die.rotation) {
+                            this.setVector(snapshot.die.rotation, snapshot.rotation);
+                            const quaternion = createQuaternionFromEulerXYZ(
+                                snapshot.rotation.x,
+                                snapshot.rotation.y,
+                                snapshot.rotation.z,
+                            );
+                            this.setQuaternion(snapshot.die.quaternion as DiceBoxQuaternionLike | undefined, quaternion);
+                            this.setQuaternion(snapshot.die.body?.quaternion, quaternion);
+                        }
+                        if (snapshot.die.body) {
+                            this.setVector(snapshot.die.body.position, snapshot.position);
+                            this.setVector(snapshot.die.body.velocity, { x: 0, y: 0, z: 0 });
+                            this.setVector(snapshot.die.body.angularVelocity, { x: 0, y: 0, z: 0 });
+                            snapshot.die.body.aabbNeedsUpdate = true;
+                        }
+                        snapshot.die.updateMatrixWorld?.(true);
+                    }
+                    this.box.scene?.updateMatrixWorld?.(true);
+                    this.syncDiceHighlightShells();
+                    this.renderFrame();
                     resolve();
                     return;
                 }
+
                 scheduleStep();
             };
             scheduleStep();
         });
-    }
-
-    previewRerollLaunch(indices: number[]): void {
-        if (indices.length === 0) return;
-        let didMove = false;
-        const lift = Math.max(5, Math.min(8, (this.styleProfile.baseScale ?? 64) * 0.1));
-        indices.forEach((index, order) => {
-            const die = this.box.diceList[index] as (DiceBoxDieWithBody & { rotation?: DiceBoxVectorLike }) | undefined;
-            if (!die) return;
-            const nextPosition = {
-                x: die.position.x + (order % 2 === 0 ? -3 : 3),
-                y: die.position.y + (order % 2 === 0 ? 2 : -2),
-                z: die.position.z + lift,
-            };
-            this.setVector(die.position, nextPosition);
-            if (die.rotation) {
-                this.setVector(die.rotation, {
-                    x: die.rotation.x + 0.22,
-                    y: die.rotation.y + 0.18,
-                    z: die.rotation.z + 0.12,
-                });
-            }
-            if (die.body) {
-                this.setVector(die.body.position, nextPosition);
-                this.setVector(die.body.velocity, { x: 0, y: 0, z: 0 });
-                this.setVector(die.body.angularVelocity, { x: 0, y: 0, z: 0 });
-                die.body.type = 1;
-                die.body.wakeUp?.();
-                die.body.aabbNeedsUpdate = true;
-            }
-            die.updateMatrixWorld?.(true);
-            didMove = true;
-        });
-        if (didMove) {
-            this.renderFrame();
-        }
     }
 
     async removeDice(indices: number[]): Promise<void> {
@@ -1258,6 +1550,7 @@ export class DiceBoxThreeEngine {
         if (!die || !canvas || !camera) return null;
 
         die.updateMatrixWorld?.(true);
+        (camera as { updateMatrixWorld?: (force?: boolean) => void }).updateMatrixWorld?.(true);
         const geometry = die.geometry;
         if (!geometry.boundingBox) {
             geometry.computeBoundingBox?.();
@@ -1277,18 +1570,25 @@ export class DiceBoxThreeEngine {
             [max.x, max.y, max.z],
         ];
 
+        const projectLocalPoint = (x: number, y: number, z: number): DiceBoxProjectedPoint => {
+            const point = new Vector3(x, y, z);
+            point.applyMatrix4(die.matrixWorld);
+            const projected = point.project(camera) as { x: number; y: number; z: number };
+            return {
+                x: ((projected.x + 1) / 2) * canvas.clientWidth,
+                y: ((1 - projected.y) / 2) * canvas.clientHeight,
+            };
+        };
+
         let minX = Number.POSITIVE_INFINITY;
         let maxX = Number.NEGATIVE_INFINITY;
         let minY = Number.POSITIVE_INFINITY;
         let maxY = Number.NEGATIVE_INFINITY;
+        const projectedPoints: DiceBoxProjectedPoint[] = [];
 
         for (const [x, y, z] of corners) {
-            const point = min.clone();
-            point.set(x, y, z);
-            point.applyMatrix4(die.matrixWorld);
-            const projected = point.project(camera) as { x: number; y: number; z: number };
-            const screenX = ((projected.x + 1) / 2) * canvas.clientWidth;
-            const screenY = ((1 - projected.y) / 2) * canvas.clientHeight;
+            const { x: screenX, y: screenY } = projectLocalPoint(x, y, z);
+            projectedPoints.push({ x: screenX, y: screenY });
             minX = Math.min(minX, screenX);
             maxX = Math.max(maxX, screenX);
             minY = Math.min(minY, screenY);
@@ -1307,6 +1607,16 @@ export class DiceBoxThreeEngine {
         const halfHeight = height / 2;
         const centerX = (minX + maxX) / 2;
         const centerY = (minY + maxY) / 2;
+        const faceOutline = computeProjectedFaceOutline(
+            { min, max },
+            die.matrixWorld,
+            camera,
+            canvas,
+            projectLocalPoint,
+        );
+        const orientedBounds = computeProjectedOrientedBounds(
+            faceOutline?.points ?? projectedPoints,
+        );
 
         return {
             id,
@@ -1316,6 +1626,12 @@ export class DiceBoxThreeEngine {
             height,
             visualWidth,
             visualHeight,
+            outlineX: faceOutline?.x ?? orientedBounds?.x ?? centerX,
+            outlineY: faceOutline?.y ?? orientedBounds?.y ?? centerY,
+            outlineWidth: faceOutline?.width ?? orientedBounds?.width ?? visualWidth,
+            outlineHeight: faceOutline?.height ?? orientedBounds?.height ?? visualHeight,
+            outlinePoints: faceOutline?.points,
+            outlineRotateZ: orientedBounds?.rotateZ ?? die.rotation.z,
             minX: centerX - halfWidth,
             maxX: centerX + halfWidth,
             minY: centerY - halfHeight,

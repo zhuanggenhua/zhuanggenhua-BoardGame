@@ -47,16 +47,13 @@ import {
     isWarningEventEffect,
     type UseEffectProfile,
 } from './possessionEffects';
-import {
-    isBetrayalOptionalHauntRollRuntimeSupported,
-} from './scenarioConfig';
+import { isBetrayalOptionalHauntRollRuntimeSupported } from './scenarioConfig';
 import { canUseBetrayalTraitorPowers } from './traitorPowerRules';
 import {
     resolveNonCombatTraitCheckValue,
     rollEventTraitCheckWithDice,
 } from './traitRollModel';
 import type {
-    BetrayalCommandMap,
     BetrayalCore,
     BetrayalDiscoveryResolutionStep,
     BetrayalDiscoverySummary,
@@ -64,6 +61,7 @@ import type {
     BetrayalPendingEventRollResolutionState,
     BetrayalTraitKey,
 } from './game';
+import type { BetrayalCommandMap } from './commandTypes';
 
 type ResolveEventChoicePayload = BetrayalCommandMap[typeof BETRAYAL_COMMANDS.RESOLVE_EVENT_CHOICE];
 

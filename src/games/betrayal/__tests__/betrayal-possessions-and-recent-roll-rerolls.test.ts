@@ -1044,6 +1044,113 @@ it('事件骰出现后使用书本会立即支付神志并按知识重新投骰�
         expect(core.currentExplorer.traits.sanity).toBe(4);
     });
 
+it('书本改骰后兔脚仍失败时，展示结束后进入固定物理伤害分配', () => {
+        let core = createStartedFirstScenarioCore();
+        core.drawOrder = ['event'];
+        setNextDiscoverySymbolRoomsForAllFloors(core, 'event');
+        core.eventOrder = [BETRAYAL_DISCOVERY_POOLS.events.find((event) => event.name === '标本剥制')!];
+        core.currentExplorer = {
+            ...core.currentExplorer,
+            traits: {
+                ...core.currentExplorer.traits,
+                might: 3,
+                speed: 5,
+                knowledge: 5,
+                sanity: 4,
+            },
+            inventory: [
+                { id: 'omen-book', name: '书本', kind: 'omen' },
+                { id: 'rope', name: '兔脚', kind: 'item' },
+            ],
+        };
+        core.currentExplorerTraits = { ...core.currentExplorer.traits };
+        core.currentExplorerInventory = [...core.currentExplorer.inventory];
+        core.turnStartInventoryCardIds = ['omen-book', 'rope'];
+        setTestTraitTrack(core, '0', 'might', [1, 2, 3, 4, 5], 2, 2);
+        setTestTraitTrack(core, '0', 'speed', [1, 2, 3, 4, 5, 6], 4, 4);
+        setTestTraitTrack(core, '0', 'knowledge', [1, 2, 3, 4, 5], 4, 4);
+        setTestTraitTrack(core, '0', 'sanity', [1, 2, 3, 4, 5], 3, 3);
+        const physicalPositionBeforeDamage = traitTrackPositionTotal(core, '0', ['might', 'speed']);
+        const sanityPositionBeforeBook = traitTrackPosition(core, '0', 'sanity');
+
+        core = applyBetrayalCommand(core, BETRAYAL_COMMANDS.MOVE_TO_ROOM, '0', { roomId: 'hallway' });
+        core = applyBetrayalCommand(
+            core,
+            BETRAYAL_COMMANDS.EXPLORE_ROOM,
+            '0',
+            { roomId: 'ground-north' },
+            100,
+            createBetrayalScriptedRandom(1, 1, 1),
+            false,
+        );
+
+        expect(core.recentRoll?.trait).toBe('might');
+        expect(core.pendingEventRollResolution?.effect).toMatchObject({
+            mode: 'compound',
+            effects: expect.arrayContaining([
+                expect.objectContaining({ mode: 'fixedDamage', amount: 1, damageKind: 'physical' }),
+                expect.objectContaining({ mode: 'placeObstacleToken' }),
+            ]),
+        });
+
+        core = applyBetrayalCommand(
+            core,
+            BETRAYAL_COMMANDS.USE_POSSESSION,
+            '0',
+            { cardId: 'omen-book' },
+            101,
+            createBetrayalScriptedRandom(3, 1, 1, 1, 1),
+            false,
+        );
+
+        expect(traitTrackPosition(core, '0', 'sanity')).toBe(sanityPositionBeforeBook - 1);
+        expect(core.recentRoll?.trait).toBe('knowledge');
+        expect(core.recentRoll?.dice).toEqual([2, 0, 0, 0, 0]);
+        expect(core.pendingEventRollResolution).toMatchObject({
+            sourceTitle: '标本剥制',
+            requiresAcknowledgement: false,
+            effect: expect.objectContaining({ mode: 'compound' }),
+        });
+        expect(core.pendingDamageAllocation).toBeNull();
+
+        core = applyBetrayalCommand(
+            core,
+            BETRAYAL_COMMANDS.USE_RABBIT_FOOT,
+            '0',
+            { cardId: 'rope', dieIndex: 0 },
+            102,
+            createBetrayalScriptedRandom(1),
+            false,
+        );
+
+        expect(core.recentRoll?.dice).toEqual([0, 0, 0, 0, 0]);
+        expect(core.pendingEventRollResolution).toMatchObject({
+            sourceTitle: '标本剥制',
+            requiresAcknowledgement: false,
+            effect: expect.objectContaining({ mode: 'compound' }),
+        });
+        expect(core.pendingDamageAllocation).toBeNull();
+
+        core = finalizePendingEventRollForTest(core);
+
+        expect(core.pendingEventRollResolution).toBeNull();
+        expectPendingDamageForTest(core, {
+            sourceTitle: '标本剥制',
+            playerId: '0',
+            damageKind: 'physical',
+            originalAmount: 1,
+            amount: 1,
+            allowedTraits: ['might', 'speed'],
+        });
+        expect(core.rooms.find((room) => room.id === 'ground-north')?.markerTokens ?? []).toContain('obstacle');
+        expect(traitTrackPositionTotal(core, '0', ['might', 'speed'])).toBe(physicalPositionBeforeDamage);
+
+        core = resolvePendingDamageForTest(core, ['speed']);
+
+        expect(core.pendingDamageAllocation).toBeNull();
+        expect(traitTrackPositionTotal(core, '0', ['might', 'speed'])).toBe(physicalPositionBeforeDamage - 1);
+    });
+
 it('兔脚重掷电话铃声时会在展示结束后应用新分支', () => {
         let core = createStartedFirstScenarioCore();
         core.drawOrder = ['event'];

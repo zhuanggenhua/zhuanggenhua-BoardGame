@@ -4,14 +4,14 @@ import {
   attachPageDiagnostics,
 } from "../helpers/common";
 import {
-  BETRAYAL_COMMANDS,
-  canSmashMagicCamera,
-  type BetrayalCore,
-  type BetrayalDiscoverySummary,
-  type BetrayalRecentRollState,
-  type BetrayalTraitKey,
-  type BetrayalUseEffectSeed,
+    canSmashMagicCamera,
+    type BetrayalCore,
+    type BetrayalDiscoverySummary,
+    type BetrayalRecentRollState,
+    type BetrayalTraitKey,
+    type BetrayalUseEffectSeed,
 } from "../../src/games/betrayal/game";
+import { BETRAYAL_COMMANDS } from "../../src/games/betrayal/commands";
 import { BETRAYAL_DISCOVERY_POOLS } from "../../src/games/betrayal/scenarioConfig";
 import { MOBILE_LANDSCAPE_REFERENCE_VIEWPORT } from "../../src/shared/referenceViewports";
 import {

@@ -15,7 +15,10 @@ import {
 import { isUponReflectionHaunt } from './hauntScenarioReadModel';
 import { resolveHauntRevealResolutionForTrigger } from './hauntSetupModel';
 import { resolveMummyForcedOmenDraw } from './mummyHauntRules';
-import { canUseHolySymbolForDiscovery, canUseIdolToSkipEvent } from './possessionActionReadModel';
+import {
+    canUseHolySymbolForDiscovery,
+    canUseIdolToSkipEvent,
+} from './possessionActionReadModel';
 import {
     cloneInventoryCard,
     createDrawnCard,
@@ -47,11 +50,11 @@ import {
 import { canUseBetrayalTraitorPowers } from './traitorPowerRules';
 import { rollEventTraitCheckWithDice } from './traitRollModel';
 import type {
-    BetrayalCommandMap,
     BetrayalCore,
     BetrayalDiscoveryResolutionStep,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalCommandMap } from './commandTypes';
+import type { BetrayalEvent } from './events';
 
 type BetrayalRoomExploredPayload = Extract<BetrayalEvent, { type: 'ROOM_EXPLORED' }>['payload'];
 type BetrayalExploreRoomPayload = BetrayalCommandMap['EXPLORE_ROOM'];

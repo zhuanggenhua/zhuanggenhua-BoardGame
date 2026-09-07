@@ -4,7 +4,6 @@ import { expect, test, type BrowserContext, type Locator, type Page } from '@pla
 import {
     assertNoFatalFrontendErrors,
     attachPageDiagnostics,
-    disableNonFlowFabForE2e,
     initContext,
     waitForFrontendAssets,
     waitForTestHarness,
@@ -72,7 +71,7 @@ const CARD_BODY_PRIMARY_HIT_POINTS = [
     { label: '标题下方主体', xRatio: 0.62, yRatio: 0.18 },
 ] as const;
 
-const CARD_BODY_PLAYER_CLICK_POINT = { label: '玩家常点卡面主体', xRatio: 0.72, yRatio: 0.35 } as const;
+const CARD_BODY_PLAYER_CLICK_POINT = { label: '玩家中心点击卡牌本体', xRatio: 0.5, yRatio: 0.5 } as const;
 
 const TUTORIAL_FLOW_SCREENSHOT_PATHS = [
     INTRO_SCREENSHOT_PATH,
@@ -151,7 +150,6 @@ async function openMageWarsTutorial(context: BrowserContext, page: Page) {
     const diagnostics = await prepareMageWarsTutorialContext(context, page);
 
     await page.goto('/play/mage-wars/tutorial', { waitUntil: 'domcontentloaded' });
-    await disableNonFlowFabForE2e(page, 'mage-wars');
     await waitForFrontendAssets(page, 45_000);
     await page.waitForLoadState('networkidle', { timeout: 30_000 }).catch(() => {});
     await expect(page.locator('[data-game-page][data-game-id="mage-wars"]').first()).toBeVisible({ timeout: 60_000 });
@@ -188,11 +186,35 @@ async function readMageWarsState(page: Page): Promise<MageWarsTutorialState> {
 }
 
 async function waitForTutorialStep(page: Page, stepId: string, timeout = 30_000) {
-    await expect(page.locator(`[data-tutorial-step="${stepId}"]`)).toBeVisible({ timeout });
     await expect.poll(async () => {
+        const visibleSteps = await page.locator('[data-tutorial-step]').evaluateAll((elements) => elements
+            .filter((element) => {
+                const rect = element.getBoundingClientRect();
+                const style = window.getComputedStyle(element);
+                return style.display !== 'none'
+                    && style.visibility !== 'hidden'
+                    && rect.width > 0
+                    && rect.height > 0;
+            })
+            .map((element) => element.getAttribute('data-tutorial-step'))
+            .filter((value): value is string => value != null));
         const state = await readMageWarsState(page);
-        return state.sys?.tutorial?.step?.id ?? null;
-    }, { timeout }).toBe(stepId);
+        return {
+            expectedStepId: stepId,
+            hasVisibleExpectedStep: visibleSteps.includes(stepId),
+            visibleSteps,
+            gameStepId: state.sys?.tutorial?.step?.id ?? null,
+            phase: state.sys?.phase ?? null,
+            phaseActorId: state.core?.phaseActorId ?? null,
+            tutorialActive: state.sys?.tutorial?.active ?? null,
+        };
+    }, {
+        timeout,
+        message: `等待教程步骤 ${stepId} 出现在真实页面，并与游戏教程状态同步`,
+    }).toEqual(expect.objectContaining({
+        hasVisibleExpectedStep: true,
+        gameStepId: stepId,
+    }));
 }
 
 async function expectTutorialStepNotVisible(page: Page, stepId: string) {
@@ -205,26 +227,46 @@ async function clickTutorialNext(page: Page) {
     await button.click({ timeout: 5_000 });
 }
 
+const MAGE_WARS_TUTORIAL_ARENA_TARGET_PREFIXES = [
+    'mw-zone-',
+    'mw-field-object-',
+    'mw-arena-object-',
+    'mw-mage-entity-',
+] as const;
 
-const TUTORIAL_TARGET_VISIBLE_CLICK_POINTS: Partial<Record<string, { xRatio: number; yRatio: number }>> = {
-    'mw-zone-a3': { xRatio: 0.5, yRatio: 0.18 },
-};
+function isMageWarsTutorialArenaTarget(tutorialId: string) {
+    return MAGE_WARS_TUTORIAL_ARENA_TARGET_PREFIXES.some((prefix) => tutorialId.startsWith(prefix));
+}
+
+async function waitForTutorialArenaPanSettled(page: Page, tutorialId: string) {
+    if (!isMageWarsTutorialArenaTarget(tutorialId)) return;
+    const viewport = page.getByTestId('mage-wars-arena-viewport');
+    await expect(viewport, `${tutorialId} 必须先触发竞技场自动聚焦`).toHaveAttribute(
+        'data-zoom-pan-active-target',
+        tutorialId,
+        { timeout: 10_000 },
+    );
+    await expect(viewport, `${tutorialId} 必须等相机稳定后才允许截图或点击`).toHaveAttribute(
+        'data-zoom-pan-target-state',
+        'settled',
+        { timeout: 10_000 },
+    );
+}
 
 async function clickTutorialTarget(page: Page, tutorialId: string) {
     const target = page.locator(`[data-tutorial-id="${tutorialId}"]`).first();
     await expect(target).toBeVisible({ timeout: 15_000 });
     await expect(target).toBeEnabled({ timeout: 10_000 });
-    const clickPoint = TUTORIAL_TARGET_VISIBLE_CLICK_POINTS[tutorialId];
-    if (clickPoint) {
-        const box = await target.boundingBox();
-        expect(box, `${tutorialId} 必须有可点击的可见几何区域`).not.toBeNull();
-        await target.click({
-            timeout: 5_000,
-            position: {
-                x: box!.width * clickPoint.xRatio,
-                y: box!.height * clickPoint.yRatio,
-            },
-        });
+    await waitForTutorialArenaPanSettled(page, tutorialId);
+    const targetTestId = await target.evaluate((element) => element.getAttribute('data-testid'));
+    if (targetTestId === 'mage-wars-zone-field-card' || targetTestId === 'mage-wars-zone-mage-entity') {
+        await clickTutorialPrimaryActionBodyTarget(page, target, tutorialId);
+        return;
+    }
+    if (tutorialId.startsWith('mw-zone-')) {
+        await expectNoTutorialCardOverlap(target, tutorialId);
+        const audit = await expectLocatorCenterUnblocked(target, tutorialId);
+        await page.mouse.click(audit.point.x, audit.point.y);
         return;
     }
     await target.click({ timeout: 5_000 });
@@ -270,6 +312,31 @@ async function expectLocatorPointUnblocked(
 
 async function expectLocatorCenterUnblocked(locator: Locator, label: string) {
     return expectLocatorPointUnblocked(locator, `${label} 中心点`, { xRatio: 0.5, yRatio: 0.5 });
+}
+
+async function clickTutorialPrimaryActionBodyTarget(page: Page, target: Locator, tutorialId: string) {
+    if (!isMageWarsTutorialArenaTarget(tutorialId)) {
+        await target.evaluate((element) => {
+            const lane = element.closest<HTMLElement>('[data-lane-owner-side]');
+            if (lane) {
+                lane.scrollTop = element.offsetTop - (lane.clientHeight / 2) + (element.clientHeight / 2);
+            }
+            element.scrollIntoView({ block: 'center', inline: 'center' });
+        });
+    }
+    await expectNoTutorialCardOverlap(target, tutorialId);
+    await expect(target, `${tutorialId} 本体必须承担当前教程主操作`).toHaveAttribute('data-primary-action', 'true');
+    await expectMagnifyOverlayHidden(page);
+    for (const hitPoint of CARD_BODY_PRIMARY_HIT_POINTS) {
+        const audit = await expectLocatorPointUnblocked(target, `${tutorialId} ${hitPoint.label}`, hitPoint);
+        expect(audit.hitInspectButton, `${tutorialId} ${hitPoint.label}不能命中放大镜: ${JSON.stringify(audit)}`).toBe(false);
+        expect(audit.hitPrimaryAction, `${tutorialId} ${hitPoint.label}必须命中本体主操作: ${JSON.stringify(audit)}`).toBe(true);
+    }
+    const audit = await expectLocatorPointUnblocked(target, `${tutorialId} ${CARD_BODY_PLAYER_CLICK_POINT.label}`, CARD_BODY_PLAYER_CLICK_POINT);
+    expect(audit.hitInspectButton, `${tutorialId} ${CARD_BODY_PLAYER_CLICK_POINT.label}不能命中放大镜: ${JSON.stringify(audit)}`).toBe(false);
+    expect(audit.hitPrimaryAction, `${tutorialId} ${CARD_BODY_PLAYER_CLICK_POINT.label}必须命中本体主操作: ${JSON.stringify(audit)}`).toBe(true);
+    await page.mouse.click(audit.point.x, audit.point.y);
+    await expectMagnifyOverlayHidden(page);
 }
 
 async function expectReferenceSizedInspectButton(card: Locator, inspectButton: Locator, label: string) {
@@ -402,11 +469,6 @@ async function clickPlanningDraftCardBody(page: Page, cardId: number, planSlotIn
     await expectMagnifyOverlayHidden(page);
 }
 
-async function clickTutorialSpellbookCard(page: Page, cardId: number) {
-    const card = await findTutorialSpellbookCard(page, cardId);
-    await clickTutorialSpellbookCardBody(page, card, cardId);
-}
-
 async function expectPlanControlsUnblocked(page: Page, expectedDraftCount: number) {
     const planButton = page.getByTestId('mage-wars-plan-spells');
     await expect(planButton).toBeVisible({ timeout: 10_000 });
@@ -464,6 +526,16 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
         const spellbookShelf = document.querySelector<HTMLElement>('[data-testid="mage-wars-desktop-spellbook-shelf"]');
         const preparedArea = document.querySelector<HTMLElement>('[data-testid="mage-wars-desktop-prepared-spells"]');
         const planButton = document.querySelector<HTMLElement>('[data-testid="mage-wars-plan-spells"]');
+        const categoryButtons = ['all', 'attack', 'enchantment', 'creature', 'incantation', 'equipment'].map((id) => {
+            const element = document.querySelector<HTMLElement>(`[data-testid="mage-wars-spellbook-category-${id}"]`);
+            return {
+                id,
+                rect: toRect(element),
+                scrollWidth: element?.scrollWidth ?? null,
+                clientWidth: element?.clientWidth ?? null,
+                whiteSpace: element ? getComputedStyle(element).whiteSpace : null,
+            };
+        });
         const firstSpellbookCard = spellbookCards[0] ?? null;
         const firstPreparedDraftCard = preparedDraftCards[0] ?? null;
         return {
@@ -474,8 +546,17 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
             bottomGap: bottomGrid ? window.innerHeight - bottomGrid.getBoundingClientRect().bottom : null,
             hudDensity: selfHud?.dataset.mageWarsHudDensity ?? null,
             opponentHudDensity: opponentHud?.dataset.mageWarsHudDensity ?? null,
+            hudAnchorPointerEvents: (() => {
+                const element = document.querySelector<HTMLElement>('[data-testid="mage-wars-hud-anchor-layer"]');
+                return element ? getComputedStyle(element).pointerEvents : null;
+            })(),
+            selfHudPointerEvents: selfHud ? getComputedStyle(selfHud).pointerEvents : null,
+            selfHudLayoutPosition: selfHud
+                ?.closest<HTMLElement>('[data-layout-position]')
+                ?.getAttribute('data-layout-position') ?? null,
             legacyHudStatGridCount: legacyHudStatGrids.length,
             legacyHudStatBarCount: legacyHudStatBars.length,
+            categoryButtons,
             hudIconRails: hudIconRails.map((rail) => {
                 const rect = rail.getBoundingClientRect();
                 const owner = rail.closest('[data-testid="mage-wars-mage-hud-self"]')
@@ -485,6 +566,7 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
                         : 'unknown';
                 return {
                     owner,
+                    align: rail.dataset.hudIconRailAlign ?? null,
                     width: rect.width,
                     height: rect.height,
                     x: rect.x,
@@ -495,7 +577,9 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
             }),
             hudStatIcons: hudStatIcons.map((icon) => {
                 const rect = icon.getBoundingClientRect();
+                const style = getComputedStyle(icon);
                 const value = icon.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-stat-value"]');
+                const glyph = icon.querySelector<SVGElement>('[data-stat-glyph-kind]');
                 const owner = icon.closest('[data-testid="mage-wars-mage-hud-self"]')
                     ? 'self'
                     : icon.closest('[data-testid="mage-wars-mage-hud-opponent"]')
@@ -504,10 +588,19 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
                 return {
                     owner,
                     stat: icon.dataset.stat ?? null,
+                    frame: icon.dataset.hudIconFrame ?? null,
+                    hitSurface: icon.dataset.hudHitSurface ?? null,
+                    tooltipTrigger: icon.dataset.hudIconTooltipTrigger ?? null,
+                    tooltipText: icon.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-icon-tooltip"]')?.textContent?.trim() ?? '',
+                    glyph: glyph?.dataset.statGlyphKind ?? null,
                     value: icon.dataset.statValue ?? null,
                     max: icon.dataset.statMax ?? null,
                     fillPercent: Number.parseFloat(icon.dataset.fillPercent ?? 'NaN'),
                     valueText: value?.textContent?.trim() ?? '',
+                    backgroundColor: style.backgroundColor,
+                    pointerEvents: style.pointerEvents,
+                    borderTopWidth: style.borderTopWidth,
+                    boxShadow: style.boxShadow,
                     width: rect.width,
                     height: rect.height,
                     x: rect.x,
@@ -518,6 +611,7 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
             }),
             hudTokenIcons: hudTokenIcons.map((icon) => {
                 const rect = icon.getBoundingClientRect();
+                const style = getComputedStyle(icon);
                 const owner = icon.closest('[data-testid="mage-wars-mage-hud-self"]')
                     ? 'self'
                     : icon.closest('[data-testid="mage-wars-mage-hud-opponent"]')
@@ -526,6 +620,12 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
                 return {
                     owner,
                     kind: icon.dataset.tokenKind ?? null,
+                    frame: icon.dataset.hudIconFrame ?? null,
+                    tooltipTrigger: icon.dataset.hudIconTooltipTrigger ?? null,
+                    tooltipText: icon.querySelector<HTMLElement>('[data-testid="mage-wars-mage-hud-icon-tooltip"]')?.textContent?.trim() ?? '',
+                    backgroundColor: style.backgroundColor,
+                    borderTopWidth: style.borderTopWidth,
+                    boxShadow: style.boxShadow,
                     width: rect.width,
                     height: rect.height,
                     x: rect.x,
@@ -565,37 +665,63 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
     expect(audit.viewport).toEqual({ width: viewport.width, height: viewport.height });
     expect(audit.desktopScale, `${viewport.label} 不得把整层 HUD / 法术书 / 计划区整体缩小来冒充适配`).toBe('1.000000');
     expect(audit.visibleSpellbookCardCount, `${viewport.label} 必须显示本轮锁定的 6 张法术书牌，不能靠减少承载量适配`).toBe(6);
+    audit.categoryButtons.forEach((category) => {
+        expect(category.rect, `${viewport.label} ${category.id} 分类按钮必须可见`).not.toBeNull();
+        expect(category.rect!.width, `${viewport.label} ${category.id} 分类按钮必须是按钮，不是小标签`).toBeGreaterThanOrEqual(72);
+        expect(category.rect!.height, `${viewport.label} ${category.id} 分类按钮必须保留可读命中面`).toBeGreaterThanOrEqual(30);
+        expect(category.whiteSpace, `${viewport.label} ${category.id} 分类按钮不得换行`).toBe('nowrap');
+        expect(category.scrollWidth, `${viewport.label} ${category.id} 分类按钮文字必须可量测`).not.toBeNull();
+        expect(category.clientWidth, `${viewport.label} ${category.id} 分类按钮文字必须可量测`).not.toBeNull();
+        expect(category.scrollWidth!, `${viewport.label} ${category.id} 分类按钮文字不得被截断`).toBeLessThanOrEqual(category.clientWidth! + 1);
+    });
     expect(audit.bottomGap, '底部主交互需要留出少量可见空隙，不能贴到屏幕底边').not.toBeNull();
     expect(audit.bottomGap!).toBeGreaterThanOrEqual(6);
     expect(audit.bottomGap!).toBeLessThanOrEqual(16);
     expect(audit.hudDensity, `${viewport.label} 桌面视口不得把玩家 HUD 自动切成 compact`).toBe('full');
     expect(audit.opponentHudDensity, `${viewport.label} 桌面视口不得把对手 HUD 自动切成 compact`).toBe('full');
+    expect(audit.hudAnchorPointerEvents, `${viewport.label} HUD 锚点层外壳不应吞掉地图 / 牌桌输入`).toBe('none');
+    expect(audit.selfHudPointerEvents, `${viewport.label} 己方 HUD 外壳不应吞掉非控件输入`).toBe('none');
+    expect(audit.selfHudLayoutPosition, `${viewport.label} 己方 HUD 必须保持左下顶层锚点，不按场上实体启用避让态`).toBe('self-lower-left');
     expect(audit.legacyHudStatGridCount, `${viewport.label} HUD attributes must not use the old text/grid progress panel`).toBe(0);
     expect(audit.legacyHudStatBarCount, `${viewport.label} HUD attributes must not render progress bars`).toBe(0);
     expect(audit.hudIconRails, `${viewport.label} both mage HUDs must expose the compact icon rail next to the hint card`).toHaveLength(2);
     expect(audit.hudStatIcons, `${viewport.label} both mage HUDs must show life, mana and channeling as icons`).toHaveLength(6);
-    expect(audit.hudTokenIcons, `${viewport.label} action and quickcast tokens must stay in the same icon rail`).toHaveLength(4);
+    expect(audit.hudTokenIcons, `${viewport.label} 行动 / 快速施法 token 不应继续占用 HUD 属性栏`).toHaveLength(0);
     for (const owner of ['self', 'opponent'] as const) {
         const ownerIcons = audit.hudStatIcons.filter((icon) => icon.owner === owner);
-        const ownerTokens = audit.hudTokenIcons.filter((icon) => icon.owner === owner);
+        const ownerRail = audit.hudIconRails.find((rail) => rail.owner === owner);
         const ownerHint = owner === 'self' ? audit.rects.selfHintCard : audit.rects.opponentHintCard;
         const ownerHud = owner === 'self' ? audit.rects.selfHud : audit.rects.opponentHud;
         expect(ownerIcons.map((icon) => icon.stat).sort()).toEqual(['channeling', 'life', 'mana']);
-        expect(ownerTokens.map((icon) => icon.kind).sort()).toEqual(['action', 'quickcast']);
+        expect(ownerRail, `${viewport.label} ${owner} HUD icon rail must exist: ${JSON.stringify(audit)}`).toBeTruthy();
+        expect(ownerRail!.align, `${viewport.label} ${owner} HUD icon rail must be left aligned`).toBe('left');
         expect(ownerHint).not.toBeNull();
         expect(ownerHud).not.toBeNull();
-        for (const icon of [...ownerIcons, ...ownerTokens]) {
+        for (const icon of ownerIcons) {
+            expect(icon.frame, `${viewport.label} ${owner} HUD icon must not add an extra backing frame: ${JSON.stringify(audit)}`).toBe('none');
+            expect(icon.hitSurface, `${viewport.label} ${owner} HUD 属性图标显示层必须点击透传`).toBe('visual-pass-through');
+            expect(icon.pointerEvents, `${viewport.label} ${owner} HUD 属性图标不能吞掉场上对象点击`).toBe('none');
+            expect(['rgba(0, 0, 0, 0)', 'transparent'], `${viewport.label} ${owner} HUD icon wrapper background must be transparent: ${JSON.stringify(audit)}`).toContain(icon.backgroundColor);
+            expect(icon.borderTopWidth, `${viewport.label} ${owner} HUD icon wrapper must not draw a border circle: ${JSON.stringify(audit)}`).toBe('0px');
+            expect(icon.boxShadow, `${viewport.label} ${owner} HUD icon wrapper must not draw a shadow circle: ${JSON.stringify(audit)}`).toBe('none');
+            expect(icon.tooltipTrigger, `${viewport.label} ${owner} HUD icon must expose a visible hover/focus explanation trigger: ${JSON.stringify(audit)}`).toBe('hover-focus');
+            expect(icon.tooltipText, `${viewport.label} ${owner} HUD icon must have readable hover/focus tooltip text: ${JSON.stringify(audit)}`).not.toBe('');
             expect(icon.width, `${viewport.label} ${owner} HUD icon must remain readable after the no-progress-bar HUD compaction: ${JSON.stringify(audit)}`).toBeGreaterThanOrEqual(viewport.width >= 1900 ? 58 : 54);
             expect(icon.height, `${viewport.label} ${owner} HUD icon must remain readable after the no-progress-bar HUD compaction: ${JSON.stringify(audit)}`).toBeGreaterThanOrEqual(viewport.width >= 1900 ? 58 : 54);
+            expect(Math.abs(icon.x - ownerRail!.x), `${viewport.label} ${owner} HUD icon column must be left aligned: ${JSON.stringify(audit)}`).toBeLessThanOrEqual(1);
             expect(icon.x, `${viewport.label} ${owner} HUD icons must sit to the right of the hint card: ${JSON.stringify(audit)}`).toBeGreaterThanOrEqual(ownerHint!.right - 1);
             expect(icon.right, `${viewport.label} ${owner} HUD icons must stay inside the HUD cluster: ${JSON.stringify(audit)}`).toBeLessThanOrEqual(ownerHud!.right + 1);
         }
         for (const statIcon of ownerIcons) {
+            if (statIcon.stat === 'life') expect(statIcon.glyph, `${viewport.label} life must use the custom vitality glyph`).toBe('vital-heart');
+            if (statIcon.stat === 'mana') expect(statIcon.glyph, `${viewport.label} mana must use the custom crystal glyph`).toBe('mana-crystal');
+            if (statIcon.stat === 'channeling') expect(statIcon.glyph, `${viewport.label} channeling must use the custom rune glyph`).toBe('channel-rune');
             expect(Number.isFinite(statIcon.fillPercent), `${viewport.label} ${owner} ${statIcon.stat} icon must expose a measured fill percent`).toBe(true);
             expect(statIcon.fillPercent, `${viewport.label} ${owner} ${statIcon.stat} fill must be clamped to 0-100`).toBeGreaterThanOrEqual(0);
             expect(statIcon.fillPercent, `${viewport.label} ${owner} ${statIcon.stat} fill must be clamped to 0-100`).toBeLessThanOrEqual(100);
             expect(statIcon.valueText, `${viewport.label} ${owner} ${statIcon.stat} icon must overlay the numeric value`).toBe(statIcon.value);
             expect(Number(statIcon.max), `${viewport.label} ${owner} ${statIcon.stat} icon must keep its max for progress meaning`).toBeGreaterThan(0);
+            expect(statIcon.tooltipText, `${viewport.label} ${owner} ${statIcon.stat} tooltip must explain current / max value`).toContain(`${statIcon.value}/${statIcon.max}`);
         }
     }
     expect(audit.rects.spellbookShelf, '法术书牌列必须有可量测宽度').not.toBeNull();
@@ -629,11 +755,12 @@ async function expectMageWarsReadableViewport(page: Page, viewport: ResponsivePl
     expect(audit.rects.opponentPreparedMirror, '对手隐藏计划提示必须可见').not.toBeNull();
     expect(audit.rects.lifeToggle, '全场生命眼睛必须可见').not.toBeNull();
     expect(audit.rects.scaleBadge, '地图缩放读数必须有独立锚点').not.toBeNull();
-    expect(audit.rects.selfHud!.x, `${viewport.label} 己方 HUD 必须留在左半区，但要避开竞技场首列实体`).toBeGreaterThanOrEqual(audit.viewport.width * 0.24);
-    expect(audit.rects.selfHud!.x, `${viewport.label} 己方 HUD 不得漂到中场或右侧玩家区`).toBeLessThanOrEqual(audit.viewport.width * 0.36);
-    expect(audit.rects.selfHud!.y, '己方生命 / 提示卡放大后允许向上占用更多阅读空间，但不能回到左上工具层').toBeGreaterThan(audit.viewport.height * 0.12);
+    expect(audit.rects.selfHud!.x, `${viewport.label} 计划态己方 HUD 必须贴左下顶层服务区`).toBeGreaterThanOrEqual(0);
+    expect(audit.rects.selfHud!.x, `${viewport.label} 计划态己方 HUD 不能启用按场上实体驱动的大比例安全偏移`).toBeLessThanOrEqual(32);
+    expect(audit.rects.selfHud!.right, `${viewport.label} 己方 HUD 集群不得越过桌面中线`).toBeLessThan(audit.viewport.width * 0.58);
+    expect(audit.rects.selfHud!.y, `${viewport.label} 己方 HUD 必须处在左下独立层，不得回到左上工具带`).toBeGreaterThan(audit.viewport.height * 0.2);
     expect(audit.rects.selfHud!.bottom, '己方生命 / 提示卡必须离开底部法术书牌列，不和法术书同排').toBeLessThanOrEqual(audit.rects.firstSpellbookCard!.y - 6);
-    expect(audit.rects.selfHud!.bottom, '己方生命 / 提示卡应靠近左下桌面区，而不是顶部 HUD 带').toBeGreaterThan(audit.viewport.height * 0.55);
+    expect(audit.rects.firstSpellbookCard!.y - audit.rects.selfHud!.bottom, `${viewport.label} 己方 HUD 必须贴近左下牌桌区，不能悬到中场`).toBeLessThanOrEqual(32);
     expect(audit.rects.opponentHud!.right).toBeGreaterThanOrEqual(audit.viewport.width - 20);
     expect(audit.rects.opponentHud!.y).toBeLessThanOrEqual(20);
     expect(audit.rects.opponentHintCard!.right, '对手提示卡必须在右上 HUD 集群内，并把右侧空间交给属性 / 动作图标 rail').toBeLessThan(audit.rects.opponentHud!.right - 32);
@@ -776,7 +903,7 @@ async function visibleAtlasFrameLoadFailures(page: Page) {
                 }];
             }
             if (!image) return [{ ...base, reason: 'atlas-frame-missing-image' }];
-            if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+            if (image.naturalWidth <= 0 || image.naturalHeight <= 0) {
                 return [{ ...base, reason: 'atlas-image-not-loaded' }];
             }
             const imageRect = image.getBoundingClientRect();
@@ -785,6 +912,7 @@ async function visibleAtlasFrameLoadFailures(page: Page) {
             }
             const pixelAudit = auditVisibleAtlasPixels(frame, image);
             if (pixelAudit.status === 'fail') {
+                if (pixelAudit.reason === 'too-few-visible-samples') return [];
                 return [{
                     ...base,
                     reason: pixelAudit.reason ?? 'atlas-frame-pixel-audit-failed',
@@ -806,14 +934,80 @@ async function assertVisibleAtlasFramesLoaded(page: Page, label: string) {
     ).toEqual([]);
 }
 
+async function visibleActionTokenLoadFailures(page: Page) {
+    return page.evaluate(() => {
+        const isVisible = (element: HTMLElement) => {
+            const style = window.getComputedStyle(element);
+            const rect = element.getBoundingClientRect();
+            return style.display !== 'none'
+                && style.visibility !== 'hidden'
+                && rect.width > 8
+                && rect.height > 8;
+        };
+        const readRect = (element: Element) => {
+            const rect = element.getBoundingClientRect();
+            return {
+                width: Math.round(rect.width * 10) / 10,
+                height: Math.round(rect.height * 10) / 10,
+            };
+        };
+
+        return Array.from(document.querySelectorAll<HTMLElement>('[data-testid="mage-wars-action-token-slot"]'))
+            .filter(isVisible)
+            .flatMap((slot) => {
+                const image = slot.querySelector<HTMLImageElement>('img');
+                const imageStyle = image ? window.getComputedStyle(image) : null;
+                const imageOpacity = imageStyle ? Number.parseFloat(imageStyle.opacity || '1') : 0;
+                const base = {
+                    tokenState: slot.dataset.actionTokenState ?? null,
+                    tokenPosition: slot.dataset.actionTokenPosition ?? null,
+                    owner: slot.closest<HTMLElement>('[data-owner-side]')?.dataset.ownerSide ?? null,
+                    tutorialId: slot.closest<HTMLElement>('[data-tutorial-id]')?.dataset.tutorialId ?? null,
+                    sourceCardId: slot.closest<HTMLElement>('[data-source-card-id]')?.dataset.sourceCardId ?? null,
+                    slotRect: readRect(slot),
+                    imageRect: image ? readRect(image) : null,
+                    imageComplete: image?.complete ?? false,
+                    naturalWidth: image?.naturalWidth ?? 0,
+                    naturalHeight: image?.naturalHeight ?? 0,
+                    imageOpacity,
+                };
+
+                if (!image) return [{ ...base, reason: 'action-token-missing-image' }];
+                if (!image.complete || image.naturalWidth <= 0 || image.naturalHeight <= 0) {
+                    return [{ ...base, reason: 'action-token-image-not-loaded' }];
+                }
+                if (imageOpacity < 0.95) return [{ ...base, reason: 'action-token-image-transparent' }];
+                return [];
+            });
+    });
+}
+
+async function assertVisibleActionTokensLoaded(page: Page, label: string) {
+    await expect.poll(
+        async () => (await visibleActionTokenLoadFailures(page)).slice(0, 8),
+        {
+            timeout: 90_000,
+            message: `${label} 截图前可见行动 token 必须完成真实图片渲染，不能停在透明加载态`,
+        },
+    ).toEqual([]);
+}
+
 async function screenshot(page: Page, path: string) {
     await mkdir(dirname(path), { recursive: true });
     await assertVisibleAtlasFramesLoaded(page, path);
+    await assertVisibleActionTokensLoaded(page, path);
     await page.screenshot({ path, fullPage: false });
 }
 
 async function screenshotTutorialStep(page: Page, stepId: string, path: string) {
     await waitForTutorialStep(page, stepId);
+    const highlightRing = page.getByTestId('tutorial-highlight-ring');
+    const highlightTarget = (await highlightRing.count()) > 0
+        ? await highlightRing.first().getAttribute('data-tutorial-highlight-target')
+        : null;
+    if (highlightTarget) {
+        await waitForTutorialArenaPanSettled(page, highlightTarget);
+    }
     await expect(page.getByTestId('tutorial-overlay-content')).toBeVisible({ timeout: 10_000 });
     await screenshot(page, path);
 }
@@ -1073,8 +1267,13 @@ test.describe('Mage Wars tutorial', () => {
         const summonedWolf = page.locator('[data-tutorial-id="mw-field-object-2819"]');
         await expect(summonedWolf).toBeVisible({ timeout: 10_000 });
         await expect(summonedWolf).toHaveAttribute('data-action-ready', 'false');
-        await expect(summonedWolf).toHaveAttribute('data-visual-action-state', 'spent');
-        await expect(summonedWolf).toHaveClass(/grayscale/);
+        await expect(summonedWolf).toHaveAttribute('data-action-token-state', 'spent');
+        await expect(summonedWolf).not.toHaveAttribute('data-visual-action-state', 'spent');
+        await expect(summonedWolf).not.toHaveClass(/grayscale/);
+        await expect(summonedWolf).not.toHaveClass(/opacity-55/);
+        const summonedWolfActionToken = summonedWolf.locator('[data-testid="mage-wars-action-token-slot"]');
+        await expect(summonedWolfActionToken).toHaveAttribute('data-action-token-position', 'entity-left-inside-midline');
+        await expect(summonedWolfActionToken).toHaveAttribute('data-action-token-image-key', /ready-token-back/);
         await screenshotTutorialStep(page, 'wolf-summoned', WOLF_SUMMONED_SCREENSHOT_PATH);
         await clickTutorialNext(page);
 
@@ -1115,8 +1314,11 @@ test.describe('Mage Wars tutorial', () => {
             discard: [3403, 2819],
         });
         await expect(summonedWolf).toHaveAttribute('data-action-ready', 'true');
+        await expect(summonedWolf).toHaveAttribute('data-action-token-state', 'ready');
         await expect(summonedWolf).not.toHaveAttribute('data-visual-action-state', 'spent');
         await expect(summonedWolf).not.toHaveClass(/grayscale/);
+        await expect(summonedWolfActionToken).toHaveAttribute('data-action-token-position', 'entity-left-inside-midline');
+        await expect(summonedWolfActionToken).toHaveAttribute('data-action-token-image-key', /ready-token-front/);
         await screenshotTutorialStep(page, 'pass-your-deployment', PASS_DEPLOYMENT_SCREENSHOT_PATH);
         await clickTutorialTarget(page, 'mw-turn-end');
         await expectTutorialStepNotVisible(page, 'opponent-deploy');

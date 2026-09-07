@@ -10,7 +10,7 @@ import {
     isSelfChatMessage,
     resolveGameHudPhase,
     trimChatMessages,
-} from '../game/framework/widgets/GameHUD';
+} from '../game/framework/widgets/gameHudModel';
 import {
     areFabAnchorRectsEqual,
     MOBILE_FAB_VISIBLE_ITEM_LIMIT,

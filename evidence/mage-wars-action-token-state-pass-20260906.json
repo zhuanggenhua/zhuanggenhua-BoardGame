@@ -1,0 +1,35 @@
+{
+  "verdict": "PASS",
+  "scope": "current-user-request",
+  "display": {
+    "purpose": "final-user-visible-delivery",
+    "trigger": "user-requested-open",
+    "viewer": "pureref",
+    "finalPassBeforeOpen": true
+  },
+  "requirements": [
+    {
+      "requirement": "Mage Wars 召唤后无法行动的生物不再使用整卡阴暗或置灰表达",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx removed grayscale/opacity/brightness/saturate dimming for spent creatures",
+        "src/games/mage-wars/__tests__/Board.fx.test.tsx verifies no data-visual-action-state and no dimming classes",
+        "node scripts/infra/vitest-cli-safe.mjs run src/games/mage-wars/__tests__/Board.fx.test.tsx --configLoader native --pool forks --no-file-parallelism --maxWorkers 1 -> 55 passed",
+        "AI visual check on e2e-desktop-action-token-state.png: creature cards remain normally lit"
+      ]
+    },
+    {
+      "requirement": "无法行动状态改用生物牌右侧行动 token 表达",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx renders mage-wars-action-token-slot at card-right-edge for creatures",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts verifies spent creature uses ready-token-back and ready creature uses ready-token-front",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"真实入口用行动 token 表示已消耗生物且不置灰\" -> 1 passed",
+        "AI visual check on e2e-desktop-action-token-state.png: the field creature shows the side action token instead of full-card dimming"
+      ]
+    }
+  ],
+  "images": [
+    "D:\\gongzuo\\webgame\\BoardGame\\test-results\\evidence-screenshots\\mage-wars\\foundation-board-runtime\\e2e-desktop-action-token-state.png"
+  ]
+}

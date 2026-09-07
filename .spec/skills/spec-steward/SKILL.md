@@ -72,6 +72,7 @@ description: 维护 BoardGame .spec 结构、规范落点、索引和名册；�
 1. **锁定被问对象**：
    - 用户点名 UI、E2E、教程、看图、资源、规则、部署、skill 治理或 Agent 路由时，先从 `knowledge/README.md`、`.spec/AGENTS.md` 和对应 skill 找责任入口。
    - 用户问“规范的规范”时，先检查治理入口：系统 `skill-governance` 与项目 `spec-steward`，再判断是否需要改项目适配。
+   - 用户指出通用规范偷带单游戏 / 单产品对象时，先按系统 `skill-governance` 提炼信息、行为和验收角色；项目层只保留落点、索引或薄适配，不把具体对象扩写成跨游戏规则。
 2. **区分三类结论**：
    - 已有规范正确，但本轮没执行 → 回答“执行失守”，不新增平行规则。
    - 规范已有但不可执行、触发不清或索引不通 → 更新对应 canonical-source、索引或适配入口。

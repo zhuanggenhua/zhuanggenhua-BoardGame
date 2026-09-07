@@ -7,6 +7,7 @@ import {
     getPublicAssetCacheControl,
     isNoCacheSpaEntryPath,
     isNoCacheStaticFilePath,
+    shouldProxyGameServerRequest,
     shouldServeSpaFallback,
     shouldUseImmutablePublicAssetCache,
 } from '../src/spa-fallback';
@@ -61,6 +62,16 @@ describe('SPA fallback guards', () => {
         expect(shouldServeSpaFallback('/admin/changelogs/')).toBe(true);
         expect(shouldServeSpaFallback('/admin/release-center')).toBe(true);
         expect(shouldServeSpaFallback('/admin/mobile-release/')).toBe(true);
+    });
+
+    it('should serve config review pages as client routes instead of proxying them to the game server', () => {
+        expect(isNoCacheSpaEntryPath('/games/dicethrone/config')).toBe(true);
+        expect(isNoCacheSpaEntryPath('/games/dicethrone/config/cards')).toBe(true);
+        expect(shouldServeSpaFallback('/games/dicethrone/config')).toBe(true);
+        expect(shouldProxyGameServerRequest('/games/dicethrone/config')).toBe(false);
+        expect(shouldProxyGameServerRequest('/games/dicethrone/config/cards')).toBe(false);
+        expect(shouldProxyGameServerRequest('/games/list')).toBe(true);
+        expect(shouldProxyGameServerRequest('/games/dicethrone/match-1')).toBe(true);
     });
 
     it('should keep html and editable layout files on no-cache policy', () => {

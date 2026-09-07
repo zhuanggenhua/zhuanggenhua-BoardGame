@@ -17,7 +17,7 @@ import { createAdminTestLatencyMiddleware } from './modules/admin/admin-test-lat
 import { AdminTestLatencyService } from './modules/admin/admin-test-latency.service';
 import { GlobalHttpExceptionFilter } from './shared/filters/http-exception.filter';
 import logger from '../../../server/logger';
-import { isNoCacheSpaEntryPath, shouldServeSpaFallback } from './spa-fallback';
+import { isNoCacheSpaEntryPath, shouldProxyGameServerRequest, shouldServeSpaFallback } from './spa-fallback';
 import {
     LONG_CACHE_IMMUTABLE_HEADER,
     LONG_CACHE_MAX_AGE,
@@ -244,7 +244,7 @@ async function bootstrap() {
         target: gameServerTarget,
         changeOrigin: true,
         ws: true,
-        pathFilter: ['/games/**', '/default/**', '/lobby-socket/**', '/socket.io/**'],
+        pathFilter: shouldProxyGameServerRequest,
         on: {
             proxyReq: fixRequestBody,
         },

@@ -8,7 +8,7 @@ import { clearOngoingEffectRegistry } from '../../domain/ongoingEffects';
 import { clearPowerModifierRegistry, getBasePowerModifiers, getEffectivePower, getPlayerEffectivePowerOnBase } from '../../domain/ongoingModifiers';
 import { collectTriggers } from '../../domain/ongoingEffects';
 import { maybeResolveReactionQueue } from '../../domain/reactionQueue';
-import { SU_EVENTS, type SmashUpCore } from '../../domain/types';
+import { SU_EVENTS, type SmashUpCore, type SmashUpEvent } from '../../domain/types';
 import {
     applyEvents,
     getReactionPrompt,
@@ -305,6 +305,60 @@ describe('Munchkin 木精灵派系能力', () => {
         expect(getEffectivePower(finalState, finalState.bases[0].minions.find(minion => minion.uid === 'guru')!, 0)).toBe(2);
         expect(getEffectivePower(finalState, finalState.bases[0].minions.find(minion => minion.uid === 'same-base-opponent')!, 0)).toBe(3);
         expect(getEffectivePower(finalState, finalState.bases[1].minions.find(minion => minion.uid === 'other-base-opponent')!, 1)).toBe(2);
+    });
+
+    it('木精灵临时力量和临时基地力量在下一回合开始清理', () => {
+        const pumpingCore = makeState({
+            players: {
+                '0': makePlayer('0'),
+                '1': makePlayer('1'),
+            },
+            bases: [makeBase('test_base', [
+                makeMinion('self', 'test_minion', '0', 2),
+                makeMinion('other', 'test_minion', '1', 2),
+            ])],
+        });
+        const pumpingStarted = invoke(pumpingCore, 'munchkin_elves_pumping_iron', 'onPlay', 'pumping');
+        const afterPlayer = respondToPromptOption(pumpingStarted.matchState!, option => option.value?.targetPlayerId === '1', '选择玩家1', '0');
+        const afterOther = respondToPromptOption(afterPlayer.finalState, option => option.value?.minionUid === 'other', '选择对方随从', '1');
+        const boosted = respondToPromptOption(afterOther.finalState, option => option.value?.minionUid === 'self', '选择己方随从', '0').finalState.core;
+
+        expect(getEffectivePower(boosted, boosted.bases[0].minions.find(minion => minion.uid === 'other')!, 0)).toBe(4);
+        expect(getEffectivePower(boosted, boosted.bases[0].minions.find(minion => minion.uid === 'self')!, 0)).toBe(5);
+
+        const clearedMinions = applyEvents(boosted, [{
+            type: SU_EVENTS.TURN_STARTED,
+            payload: { playerId: '1', turnNumber: 2 },
+            timestamp: 200,
+        } as SmashUpEvent]);
+        expect(getEffectivePower(clearedMinions, clearedMinions.bases[0].minions.find(minion => minion.uid === 'other')!, 0)).toBe(2);
+        expect(getEffectivePower(clearedMinions, clearedMinions.bases[0].minions.find(minion => minion.uid === 'self')!, 0)).toBe(2);
+
+        const helpingCore = makeState({
+            players: {
+                '0': makePlayer('0', { vp: 2 }),
+                '1': makePlayer('1', { vp: 3 }),
+            },
+            bases: [makeBase('test_base', [
+                makeMinion('helper', 'test_minion', '0', 1),
+                makeMinion('target', 'test_minion', '1', 4),
+            ])],
+        });
+        const helpingStarted = invoke(helpingCore, 'munchkin_elves_helping_hands', 'special', 'helping-hands', 0, 0);
+        const helpingAfterPlayer = respondToPromptOption(helpingStarted.matchState!, option => option.value?.targetPlayerId === '1', '选择目标玩家', '0');
+        const armed = respondToPromptOption(helpingAfterPlayer.finalState, option => option.value?.minionUid === 'helper', '选择己方随从', '0').finalState.core;
+
+        expect(getPlayerEffectivePowerOnBase(armed, armed.bases[0], 0, '1')).toBe(6);
+        expect(getEffectivePower(armed, armed.bases[0].minions.find(minion => minion.uid === 'helper')!, 0)).toBe(0);
+
+        const clearedBasePower = applyEvents(armed, [{
+            type: SU_EVENTS.TURN_STARTED,
+            payload: { playerId: '1', turnNumber: 2 },
+            timestamp: 201,
+        } as SmashUpEvent]);
+        expect(clearedBasePower.tempBasePowerModifiers).toBeUndefined();
+        expect(getPlayerEffectivePowerOnBase(clearedBasePower, clearedBasePower.bases[0], 0, '1')).toBe(4);
+        expect(getEffectivePower(clearedBasePower, clearedBasePower.bases[0].minions.find(minion => minion.uid === 'helper')!, 0)).toBe(1);
     });
 
     it('在你之后按游戏人数让自己抽牌，并让每个其他玩家各抽一张', () => {

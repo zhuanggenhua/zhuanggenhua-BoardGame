@@ -1,14 +1,20 @@
-import type { Command, MatchState, RandomFn } from "../../../engine/types";
+import type {
+  Command,
+  MatchState,
+  RandomFn,
+} from "../../../engine/types";
 import {
-  BETRAYAL_COMMANDS,
   BetrayalDomain,
   EXPLORER_CATALOG,
   createBetrayalMonsterFromDefinition,
-  type BetrayalCommand,
-  type BetrayalCommandMap,
   type BetrayalCore,
   type BetrayalTraitKey,
 } from "../game";
+import { BETRAYAL_COMMANDS } from "../commands";
+import type {
+  BetrayalCommand,
+  BetrayalCommandMap,
+} from "../commandTypes";
 import {
   resolveBetrayalMonsterMoveTargetRooms,
   resolveBetrayalMonsterMovementGroups,
@@ -417,6 +423,11 @@ function applyTutorialDiscoveryOrder(core: BetrayalCore): BetrayalCore {
 function applyBasicTutorialEventRoomDiscoveryOrder(core: BetrayalCore): BetrayalCore {
   setFixtureRoomDiscoveryDeck(core, [
     { floor: "ground", room: findFixtureRoomTemplate("ground", "kitchen") },
+    { floor: "ground", room: findFixtureRoomTemplate("ground", "observatory") },
+    { floor: "ground", room: findFixtureRoomTemplate("ground", "conservatory") },
+    { floor: "ground", room: findFixtureRoomTemplate("ground", "graveyard") },
+    { floor: "ground", room: findFixtureRoomTemplate("ground", "ballroom") },
+    { floor: "upper", room: findFixtureRoomTemplate("upper", "library") },
     { floor: "upper", room: findFixtureRoomTemplate("upper", "tower") },
     { floor: "basement", room: findFixtureRoomTemplate("basement", "chasm") },
   ]);
@@ -561,19 +572,19 @@ export function createStartedFirstScenarioTutorialCore(
 ): BetrayalCore {
   const core = createStartedFirstScenarioCore(playerIds);
   setFixtureExplorerInventory(core, "0", [
-    { id: "medical-kit", name: "急救包", kind: "item" },
     { id: "rope", name: "兔脚", kind: "item" },
     { id: "omen-book", name: "书本", kind: "omen" },
   ]);
   setFixtureExplorerInventory(core, "1", [
     { id: "map", name: "地图", kind: "item" },
-    { id: "skull", name: "头骨", kind: "omen" },
   ]);
   core.otherExplorers = core.otherExplorers.map((explorer) =>
     explorer.playerId === "1"
       ? { ...explorer, roomId: "hallway" }
       : explorer,
   );
+  core.possessionOrderByKind.omen = pickMainPlayerPathOmenOrder();
+  core.deckCounts.omen = core.possessionOrderByKind.omen.length;
   core.usedCardIdsThisTurn = [];
   return applyBasicTutorialEventRoomDiscoveryOrder(
     applyTutorialDiscoveryOrder(core),
@@ -649,6 +660,24 @@ function pickNaturalHauntTriggerOmenOrder(): BetrayalCore["possessionOrderByKind
   ];
 }
 
+function pickMainPlayerPathOmenOrder(): BetrayalCore["possessionOrderByKind"]["omen"] {
+  const orderedOmenIds = ["ring", "dog", "mask"];
+  const unavailableOmenIds = new Set(["omen-book", "skull", ...orderedOmenIds]);
+  const orderedOmens = orderedOmenIds.map((id) => {
+    const omen = BETRAYAL_DISCOVERY_POOLS.possessions.omen.find((candidate) => candidate.id === id);
+    if (!omen) {
+      throw new Error(`山屋默认教程自然作祟流程缺少预兆牌：${id}`);
+    }
+    return { ...omen };
+  });
+  return [
+    ...orderedOmens,
+    ...BETRAYAL_DISCOVERY_POOLS.possessions.omen
+      .filter((omen) => !unavailableOmenIds.has(omen.id))
+      .map((omen) => ({ ...omen })),
+  ];
+}
+
 export function createNaturalHauntTriggerTutorialCore(): BetrayalCore {
   const core = applyTutorialDiscoveryOrder(createStartedFirstScenarioCore(["0", "1", "2"]));
   core.drawOrder = ["omen"];
@@ -661,8 +690,8 @@ export function createNaturalHauntTriggerTutorialCore(): BetrayalCore {
     { floor: "ground", room: findFixtureRoomTemplate("ground", "ballroom") },
   ]);
   setFixtureDiscoveredRoomVisual(core, "upper-west", "upper", "library");
-  core.currentExplorer.roomId = "upper-west";
-  core.activeRoomId = "upper-west";
+  core.currentExplorer.roomId = "upper-landing";
+  core.activeRoomId = "upper-landing";
   core.usedCardIdsThisTurn = [];
   core.recommendedAction = "endTurn";
 

@@ -7,13 +7,17 @@ import {
     createBloodFromStoneGazeDamageAllocationQueue,
     createPendingDamageAllocation,
 } from './damageResolutionModel';
-import { findExplorerByPlayerId, getAllExplorers } from './explorerReadModel';
-import type {
-    BetrayalCore,
-    BetrayalEvent,
-} from './game';
+import {
+    findExplorerByPlayerId,
+    getAllExplorers,
+} from './explorerReadModel';
+import type { BetrayalCore } from './game';
+import type { BetrayalEvent } from './events';
 import { resolveMummyStealableCards } from './hauntAttackRewardReadModel';
-import { findHelpingHandsTrollHand, isMummyMonster } from './hauntScenarioReadModel';
+import {
+    findHelpingHandsTrollHand,
+    isMummyMonster,
+} from './hauntScenarioReadModel';
 import {
     cloneMonsterMovementRollGroupResult,
     cloneMonsterTurnRuntimeState,
@@ -23,7 +27,10 @@ import {
     applyBetrayalMonsterDamageOutcome,
     flipStunnedMonsterSideUp,
 } from './monsterReadModel';
-import { collectMummyGirlByMummyIfPresent, resolveMummyForcedDamageTraits } from './mummyHauntRules';
+import {
+    collectMummyGirlByMummyIfPresent,
+    resolveMummyForcedDamageTraits,
+} from './mummyHauntRules';
 import { resolveRecommendedAction } from './recommendedActionReadModel';
 import { resolveDefenseExtraDiceWhenAttacked } from './attackRules';
 

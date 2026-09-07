@@ -1,0 +1,47 @@
+{
+  "verdict": "PASS",
+  "scope": "current-user-request",
+  "display": {
+    "purpose": "final-user-visible-delivery",
+    "trigger": "task-final-delivery",
+    "viewer": "pureref",
+    "finalPassBeforeOpen": true
+  },
+  "requirements": [
+    {
+      "requirement": "Mage Wars 的行动 / 快速施法 / 守卫 token 放在宿主单位左内侧中线，并保持竖排。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx renders the shared entity status token rail with data-token-rail-position=entity-left-inside-midline, data-token-rail-axis=vertical, data-token-rail-placement=inside, and data-token-rail-layout=stack.",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts verifies creature, mage action, and quickcast token rails are horizontally inside their host entities.",
+        "rg -n \"entity-corner|entity-left-midline|split-around-life-readout\" src/games/mage-wars e2e/mage-wars -g \"*.tsx\" -g \"*.ts\" -> no matches."
+      ]
+    },
+    {
+      "requirement": "token 不再挡住生命数字，生命读数仍贴在单位本体上。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx moves the life readout to the entity-right-midline slot while preserving the hover / eye-toggle visibility contract.",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts verifies action and quickcast token rectangles do not overlap life readout rectangles.",
+        "npm run test:e2e:ci:file -- e2e/mage-wars/foundation-board-runtime.e2e.ts \"真实入口用行动 token 表示已消耗生物且不置灰\" -> 1 passed.",
+        "npm run test:e2e:ci:file -- e2e/mage-wars/foundation-board-runtime.e2e.ts \"真实入口加载正式牌桌素材并落桌面验收截图\" -> 1 passed."
+      ]
+    },
+    {
+      "requirement": "刚召唤后不能行动仍用已用面 token 表达，不恢复整卡阴暗 / 置灰效果，也不放回属性栏。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx no longer uses the avoidLifeReadout corner branch and keeps action token state on the entity rail.",
+        "src/games/mage-wars/__tests__/Board.fx.test.tsx verifies spent creatures have no grayscale, opacity-55, brightness-75, or saturate-50 classes and use ready-token-back.",
+        "node scripts/infra/vitest-cli-safe.mjs run src/games/mage-wars/__tests__/Board.fx.test.tsx --configLoader native --pool forks --no-file-parallelism --maxWorkers 1 -t \"shows the spent action token without dimming newly summoned creatures|keeps creature and mage tokens in a left-inside vertical rail|renders wounded state as a Summoner Wars style life readout instead of generic badges or damage token images\" -> 3 passed."
+      ]
+    }
+  ],
+  "images": [
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-action-token-inside-20260907.png"
+  ],
+  "notes": [
+    "This PASS manifest only covers the current token placement, life readout collision, and no-dimming requirements.",
+    "It does not claim full Mage Wars UI or full game completion."
+  ]
+}

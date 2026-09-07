@@ -81,6 +81,7 @@ type InteractionOption = {
             sourceDefId?: string;
             targetBaseIndex?: number;
             targetMinionUid?: string;
+            targetPlayerId?: string;
         treasureDefId?: string;
         treasureUid?: string;
         triggerId?: string;
@@ -150,6 +151,9 @@ type TriggerQueueEvidenceEvent = {
 
 type TriggerQueueEntry = {
     id?: string;
+    baseIndex?: number;
+    sourceBaseIndex?: number;
+    sourceCardUid?: string;
     sourceDefId?: string;
     source?: { defId?: string };
 };
@@ -203,6 +207,31 @@ async function getReactionWindowStatus(page: Page): Promise<{ sourceId: string |
     });
 }
 
+async function getReactionTriggerSourceSelector(
+    game: GameTestContext,
+    option: InteractionOption,
+): Promise<string | null> {
+    const triggerId = option.value?.kind === 'trigger' ? option.value.triggerId : undefined;
+    if (!triggerId) return null;
+
+    const state = await game.getState();
+    const triggers = (state.core?.triggerQueue ?? []) as TriggerQueueEntry[];
+    const trigger = triggers.find((entry) => entry.id === triggerId);
+    if (!trigger) return null;
+
+    if (trigger.sourceCardUid) {
+        return [
+            `[data-minion-uid="${trigger.sourceCardUid}"]`,
+            `[data-ongoing-uid="${trigger.sourceCardUid}"]`,
+            `[data-attached-action-uid="${trigger.sourceCardUid}"]`,
+            `[data-titan-uid="${trigger.sourceCardUid}"]`,
+        ].join(', ');
+    }
+
+    const sourceBaseIndex = trigger.sourceBaseIndex ?? trigger.baseIndex;
+    return typeof sourceBaseIndex === 'number' ? `[data-base-index="${sourceBaseIndex}"]` : null;
+}
+
 async function clickVisibleInteractionOptionBy(
     page: Page,
     game: GameTestContext,
@@ -232,6 +261,16 @@ async function clickVisibleInteractionOptionBy(
         }
     }
 
+    const triggerSourceSelector = await getReactionTriggerSourceSelector(game, option);
+    if (triggerSourceSelector) {
+        const triggerSource = page.locator(triggerSourceSelector).first();
+        if (await triggerSource.isVisible({ timeout: 1000 }).catch(() => false)) {
+            await triggerSource.click({ force: true });
+            await page.waitForTimeout(300);
+            return;
+        }
+    }
+
     const buttonLabels = [
         option.label,
         option.value?.kind === 'pass' ? '让过' : undefined,
@@ -247,6 +286,116 @@ async function clickVisibleInteractionOptionBy(
     }
 
     throw new Error(`${description}：匹配选项存在，但页面没有可见的真实点击载体（optionId=${option.id}）`);
+}
+
+async function expectVisibleInteractionOptionBy(
+    page: Page,
+    game: GameTestContext,
+    matcher: (option: InteractionOption) => boolean,
+    description: string,
+): Promise<void> {
+    const options = await game.getInteractionOptions() as InteractionOption[];
+    const option = options.find(matcher);
+    expect(option?.id, `${description}：当前交互必须有匹配的可选项`).toBeTruthy();
+
+    const cardOption = page.locator(`[data-option-id="${option!.id}"]`).first();
+    if (await cardOption.isVisible({ timeout: 2000 }).catch(() => false)) {
+        return;
+    }
+
+    const handCardUid = option!.value?.cardUid ?? option!.value?.handCardUid;
+    if (handCardUid) {
+        const handCard = page.locator(handCardSelector(handCardUid)).first();
+        if (await handCard.isVisible({ timeout: 1000 }).catch(() => false)) {
+            return;
+        }
+    }
+
+    const triggerSourceSelector = await getReactionTriggerSourceSelector(game, option!);
+    if (triggerSourceSelector) {
+        const triggerSource = page.locator(triggerSourceSelector).first();
+        if (await triggerSource.isVisible({ timeout: 1000 }).catch(() => false)) {
+            return;
+        }
+    }
+
+    const buttonLabels = [
+        option!.label,
+        option!.value?.kind === 'pass' ? '让过' : undefined,
+        option!.value?.kind === 'pass' ? 'Pass' : undefined,
+    ].filter((label): label is string => typeof label === 'string' && label.trim().length > 0);
+    for (const label of buttonLabels) {
+        const button = page.getByRole('button', { name: label, exact: true }).first();
+        if (await button.isVisible({ timeout: 1000 }).catch(() => false)) {
+            return;
+        }
+    }
+
+    throw new Error(`${description}：匹配选项存在，但页面没有可见的真实点击载体（optionId=${option!.id}）`);
+}
+
+async function waitForMeFirstReactionChoice(page: Page): Promise<void> {
+    await expect.poll(async () => {
+        const status = await getReactionWindowStatus(page);
+        const phase = await page.evaluate(() => (
+            (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.()?.sys?.phase ?? null
+        ));
+        return {
+            phase,
+            sourceId: status.sourceId,
+            windowType: status.windowType,
+        };
+    }, { timeout: 15000, polling: 200 }).toEqual({
+        phase: 'scoreBases',
+        sourceId: 'smashup_reaction_choose',
+        windowType: 'meFirst',
+    });
+}
+
+async function waitForInteractionSourceId(
+    page: Page,
+    sourceIds: string[],
+    description: string,
+    timeout = 15000,
+): Promise<string> {
+    const handle = await page.waitForFunction((expectedSourceIds) => {
+        const sourceId = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.()?.sys?.interaction?.current?.data?.sourceId ?? null;
+        return Array.isArray(expectedSourceIds) && typeof sourceId === 'string' && expectedSourceIds.includes(sourceId)
+            ? sourceId
+            : false;
+    }, sourceIds, { timeout, polling: 200 }).catch(async () => {
+        const state = await page.evaluate(() => {
+            const current = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.();
+            const frames = (current?.sys?.resolution?.frames ?? []) as Array<{
+                metadata?: { smashupReactionSession?: { responseWindowType?: string } };
+            }>;
+            const triggerQueue = (current?.core?.triggerQueue ?? []) as Array<{
+                id?: string;
+                sourceDefId?: string;
+                source?: { defId?: string };
+                sourceCardUid?: string;
+                baseIndex?: number;
+                sourceBaseIndex?: number;
+            }>;
+            return {
+                phase: current?.sys?.phase ?? null,
+                interactionSourceId: current?.sys?.interaction?.current?.data?.sourceId ?? null,
+                interactionPlayerId: current?.sys?.interaction?.current?.playerId ?? null,
+                responseWindowType: current?.sys?.responseWindow?.current?.windowType ?? null,
+                reactionSessionType: [...frames].reverse().find((frame) => frame.metadata?.smashupReactionSession)
+                    ?.metadata?.smashupReactionSession?.responseWindowType ?? null,
+                triggerQueue: triggerQueue.map((trigger) => ({
+                    id: trigger?.id ?? null,
+                    sourceDefId: trigger?.sourceDefId ?? trigger?.source?.defId ?? null,
+                    sourceCardUid: trigger?.sourceCardUid ?? null,
+                    baseIndex: trigger?.baseIndex ?? trigger?.sourceBaseIndex ?? null,
+                })),
+                pendingAfterScoringSpecials: current?.core?.pendingAfterScoringSpecials ?? [],
+            };
+        });
+        throw new Error(`${description}：等待交互 ${sourceIds.join(' / ')} 超时，当前状态=${JSON.stringify(state)}`);
+    });
+    return String(await handle.jsonValue());
 }
 
 async function passOpenReactionOrResponseWindow(
@@ -7123,7 +7272,7 @@ const buildMunchkinClericsDeepFriarScene = (): SmashUpSceneConfig => ({
                     defId: 'base_the_homeworld',
                     minions: [
                         minion('clerics-friar-1', 'munchkin_clerics_deep_friar', '0', 4),
-                        minion('clerics-friar-move', 'alien_invader', '0', 30),
+                        minion('clerics-friar-move', 'alien_invader', '0', 19),
                     ],
                     ongoingActions: [],
                     monsters: [],
@@ -12590,14 +12739,25 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await undeadPortal.click({ force: true });
         await game.waitForInteraction('munchkin_mages_portal_to_beyond_discard', 10000);
         await waitForSmashUpFxToSettle(page);
+        const undeadCostOptions = await game.getInteractionOptions() as InteractionOption[];
+        const undeadCostOption = undeadCostOptions.find(
+            (option: InteractionOption) => option.value?.cardUid === 'clerics-whack-cost-undead',
+        );
+        expect(undeadCostOption?.id, '抓鬼召唤亡灵怪物时应列出指定手牌作为弃牌成本').toBeTruthy();
         await expectManualChoiceVisible(
             page,
-            handCardSelector('clerics-whack-cost-undead'),
+            `[data-option-id="${undeadCostOption!.id}"]`,
             '抓鬼召唤亡灵怪物时选择弃牌成本',
-            { forbidPromptContext: true },
+            { allowPromptCardGrid: true, forbidPromptContext: true },
         );
         await game.screenshot('牧师-抓鬼-召唤亡灵时手动选择弃牌', testInfo);
-        await page.locator(handCardSelector('clerics-whack-cost-undead')).first().click({ force: true });
+        await clickVisibleInteractionOptionBy(
+            page,
+            game,
+            (option: InteractionOption) => option.value?.cardUid === 'clerics-whack-cost-undead',
+            '抓鬼召唤亡灵怪物时选择弃牌成本',
+        );
+        await game.confirm();
         await game.waitForNoInteraction(10000);
         await waitForSmashUpFxToSettle(page);
 
@@ -12616,14 +12776,25 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await livingPortal.click({ force: true });
         await game.waitForInteraction('munchkin_mages_portal_to_beyond_discard', 10000);
         await waitForSmashUpFxToSettle(page);
+        const livingCostOptions = await game.getInteractionOptions() as InteractionOption[];
+        const livingCostOption = livingCostOptions.find(
+            (option: InteractionOption) => option.value?.cardUid === 'clerics-whack-cost-living',
+        );
+        expect(livingCostOption?.id, '抓鬼召唤普通怪物时应列出指定手牌作为弃牌成本').toBeTruthy();
         await expectManualChoiceVisible(
             page,
-            handCardSelector('clerics-whack-cost-living'),
+            `[data-option-id="${livingCostOption!.id}"]`,
             '抓鬼召唤普通怪物时选择弃牌成本',
-            { forbidPromptContext: true },
+            { allowPromptCardGrid: true, forbidPromptContext: true },
         );
         await game.screenshot('牧师-抓鬼-召唤普通怪物时手动选择弃牌', testInfo);
-        await page.locator(handCardSelector('clerics-whack-cost-living')).first().click({ force: true });
+        await clickVisibleInteractionOptionBy(
+            page,
+            game,
+            (option: InteractionOption) => option.value?.cardUid === 'clerics-whack-cost-living',
+            '抓鬼召唤普通怪物时选择弃牌成本',
+        );
+        await game.confirm();
         await game.waitForNoInteraction(10000);
         await waitForSmashUpFxToSettle(page);
 
@@ -17328,10 +17499,20 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await game.playCard('munchkin_elves_flower_child', { targetBaseIndex: 0 });
         await game.waitForInteraction('munchkin_elves_flower_child_choose_player', 10000);
         await waitForSmashUpFxToSettle(page);
-        await expect(page.getByRole('button', { name: '木精灵' })).toBeVisible({ timeout: 15000 });
+        await expectVisibleInteractionOptionBy(
+            page,
+            game,
+            option => option.value?.targetPlayerId === '1',
+            '花之子第一步应显示另一位玩家选项',
+        );
         await game.screenshot('木精灵-花之子-手动选择玩家', testInfo);
 
-        await page.getByRole('button', { name: '木精灵' }).click({ force: true });
+        await clickVisibleInteractionOptionBy(
+            page,
+            game,
+            option => option.value?.targetPlayerId === '1',
+            '花之子选择另一位玩家',
+        );
         await game.waitForInteraction('munchkin_elves_flower_child_choose_minion', 10000);
         await waitForSmashUpFxToSettle(page);
         await expectManualMinionChoiceVisible(
@@ -17374,9 +17555,19 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
 
             await game.waitForInteraction('munchkin_elves_pumping_iron_choose_player', 10000);
             await waitForSmashUpFxToSettle(page);
-            await expect(page.getByRole('button', { name: '木精灵' })).toBeVisible({ timeout: 15000 });
+            await expectVisibleInteractionOptionBy(
+                page,
+                game,
+                option => option.value?.targetPlayerId === '1',
+                '力量训练第一步应显示另一位玩家选项',
+            );
             await game.screenshot('木精灵-力量训练-手动选择玩家', testInfo);
-            await page.getByRole('button', { name: '木精灵' }).click({ force: true });
+            await clickVisibleInteractionOptionBy(
+                page,
+                game,
+                option => option.value?.targetPlayerId === '1',
+                '力量训练选择另一位玩家',
+            );
 
             const otherPlayerState = await game.getState();
             await mirrorSmashUpHarnessState(targetPage, otherPlayerState);
@@ -17385,7 +17576,7 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
                     === 'munchkin_elves_pumping_iron_choose_other_minion',
                 { timeout: 10000, polling: 200 },
             );
-            await waitForSmashUpFxToSettle(page);
+            await waitForSmashUpFxToSettle(targetPage);
             await expectManualMinionChoiceVisible(
                 targetPage,
                 'elves-pumping-other',
@@ -17438,10 +17629,20 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
             await game.playCard('munchkin_elves_trade');
             await game.waitForInteraction('munchkin_elves_trade_choose_player', 10000);
             await waitForSmashUpFxToSettle(page);
-            await expect(page.getByRole('button', { name: '木精灵' })).toBeVisible({ timeout: 15000 });
+            await expectVisibleInteractionOptionBy(
+                page,
+                game,
+                option => option.value?.targetPlayerId === '1',
+                '贸易应显示有手牌的目标玩家选项',
+            );
             await game.screenshot('木精灵-贸易-手动选择目标玩家', testInfo);
 
-            await page.getByRole('button', { name: '木精灵' }).click({ force: true });
+            await clickVisibleInteractionOptionBy(
+                page,
+                game,
+                option => option.value?.targetPlayerId === '1',
+                '贸易选择目标玩家',
+            );
             await game.waitForNoInteraction(10000);
             await waitForSmashUpFxToSettle(page);
 
@@ -17479,9 +17680,19 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await lord.click({ force: true });
         await game.waitForInteraction('munchkin_elves_lord_of_the_prance_choose_player', 10000);
         await waitForSmashUpFxToSettle(page);
-        await expect(page.getByRole('button', { name: '木精灵' })).toBeVisible({ timeout: 15000 });
+        await expectVisibleInteractionOptionBy(
+            page,
+            game,
+            option => option.value?.targetPlayerId === '1',
+            '优雅贵族应显示另一位玩家选项',
+        );
         await game.screenshot('木精灵-优雅贵族-手动选择另一位玩家', testInfo);
-        await page.getByRole('button', { name: '木精灵' }).click({ force: true });
+        await clickVisibleInteractionOptionBy(
+            page,
+            game,
+            option => option.value?.targetPlayerId === '1',
+            '优雅贵族选择另一位玩家',
+        );
         await game.waitForNoInteraction(10000);
         await waitForSmashUpFxToSettle(page);
 
@@ -17572,15 +17783,7 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await expect(page.locator('[data-card-uid="elves-run-away-1"]').first()).toBeVisible({ timeout: 15000 });
         await expect(page.locator('[data-minion-uid="elves-run-away-own"]').first()).toBeVisible({ timeout: 15000 });
         await game.advancePhase();
-        await page.waitForFunction(
-            () => {
-                const state = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.();
-                return state?.sys?.phase === 'scoreBases'
-                    && state?.sys?.responseWindow?.current?.windowType === 'meFirst'
-                    && state?.sys?.interaction?.current?.data?.sourceId === 'smashup_reaction_choose';
-            },
-            { timeout: 15000, polling: 200 },
-        );
+        await waitForMeFirstReactionChoice(page);
 
         await game.selectInteractionOptionBy(
             option => option.value?.kind === 'play_action'
@@ -17656,22 +17859,7 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
                 { timeout: 10000, polling: 200 },
             );
             await waitForSmashUpFxToSettle(page);
-            const reactionOption = await page.evaluate(() => {
-                const harness = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__;
-                const state = harness?.state?.get?.() as any;
-                const triggers = state?.core?.triggerQueue ?? [];
-                const options = state?.sys?.interaction?.current?.data?.options ?? [];
-                const option = options.find((entry: any) => {
-                    const trigger = triggers.find((triggerEntry: any) => triggerEntry.id === entry.value?.triggerId);
-                    return trigger?.sourceDefId === 'munchkin_elves_fae_fighter';
-                });
-                return option ? { label: option.label ?? null, id: option.id ?? null } : null;
-            });
-            expect(reactionOption, '精灵斗士应出现在玩家0的反应候选中').not.toBeNull();
-            expect(reactionOption?.label, '精灵斗士反应应使用可见文字按钮承接').toBeTruthy();
-            const reactionButton = page.getByRole('button', { name: '精灵斗士', exact: true });
-            await expect(reactionButton, '精灵斗士反应必须以可见中文按钮承接').toBeVisible({ timeout: 10000 });
-            await reactionButton.click({ force: true });
+            await chooseReactionBySourceDefId(page, game, 'munchkin_elves_fae_fighter', '精灵斗士选择反应候选');
             await page.waitForFunction(
                 () => (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.()?.sys?.interaction?.current?.data?.sourceId
                     === 'munchkin_elves_fae_fighter_choose_target',
@@ -17709,15 +17897,7 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await expect(page.locator('[data-minion-uid="elves-helping-own"]').first()).toBeVisible({ timeout: 15000 });
         await game.screenshot('木精灵-援手-计分前', testInfo);
         await game.advancePhase();
-        await page.waitForFunction(
-            () => {
-                const state = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.();
-                return state?.sys?.phase === 'scoreBases'
-                    && state?.sys?.responseWindow?.current?.windowType === 'meFirst'
-                    && state?.sys?.interaction?.current?.data?.sourceId === 'smashup_reaction_choose';
-            },
-            { timeout: 15000, polling: 200 },
-        );
+        await waitForMeFirstReactionChoice(page);
         await game.selectInteractionOptionBy(
             option => option.value?.kind === 'play_action'
                 && option.value?.cardUid === 'elves-helping-hands-1'
@@ -17726,9 +17906,19 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         );
         await game.waitForInteraction('munchkin_elves_helping_hands_choose_player', 10000);
         await waitForSmashUpFxToSettle(page);
-        await expect(page.getByRole('button', { name: '木精灵' })).toBeVisible({ timeout: 15000 });
+        await expectVisibleInteractionOptionBy(
+            page,
+            game,
+            option => option.value?.targetPlayerId === '1',
+            '援手第一步应显示目标玩家选项',
+        );
         await game.screenshot('木精灵-援手-手动选择目标玩家', testInfo);
-        await page.getByRole('button', { name: '木精灵' }).click({ force: true });
+        await clickVisibleInteractionOptionBy(
+            page,
+            game,
+            option => option.value?.targetPlayerId === '1',
+            '援手选择目标玩家',
+        );
         await game.waitForInteraction('munchkin_elves_helping_hands_choose_minion', 10000);
         await waitForSmashUpFxToSettle(page);
         await expectManualMinionChoiceVisible(
@@ -17739,8 +17929,14 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         );
         await game.screenshot('木精灵-援手-手动选择己方随从', testInfo);
         await clickManualMinionChoice(page, 'elves-helping-own', '援手选择己方随从');
-        await game.waitForInteraction('smashup_reaction_choose', 10000);
-        await chooseReactionBySourceDefId(page, game, 'munchkin_elves_helping_hands', '选择援手计分后效果');
+        const helpingAfterScoringSourceId = await waitForInteractionSourceId(
+            page,
+            ['smashup_reaction_choose', 'munchkin_elves_helping_hands_choose_vp'],
+            '援手选择己方随从后应进入计分后反应或 VP 选择',
+        );
+        if (helpingAfterScoringSourceId === 'smashup_reaction_choose') {
+            await chooseReactionBySourceDefId(page, game, 'munchkin_elves_helping_hands', '选择援手计分后效果');
+        }
         await game.waitForInteraction('munchkin_elves_helping_hands_choose_vp', 15000);
         await waitForSmashUpFxToSettle(page);
         await expect(page.getByRole('button', { name: '获得 1 VP' })).toBeVisible({ timeout: 15000 });
@@ -17846,15 +18042,7 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
             await expect(page.locator('[data-minion-uid="elves-run-more-b"]').first()).toBeVisible({ timeout: 15000 });
 
             await game.advancePhase();
-            await page.waitForFunction(
-                () => {
-                    const state = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.();
-                    return state?.sys?.phase === 'scoreBases'
-                        && state?.sys?.responseWindow?.current?.windowType === 'meFirst'
-                        && state?.sys?.interaction?.current?.data?.sourceId === 'smashup_reaction_choose';
-                },
-                { timeout: 15000, polling: 200 },
-            );
+            await waitForMeFirstReactionChoice(page);
             await game.selectInteractionOptionBy(
                 option => option.value?.kind === 'play_action'
                     && option.value?.cardUid === 'elves-run-more-1'
@@ -17888,12 +18076,15 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await page.getByRole('button', { name: '确认选择' }).click({ force: true });
         await game.waitForNoInteraction(10000);
         const skippedState = await game.getState();
-        expect(skippedState.core.bases[0].minions.map((entry: any) => entry.uid)).toEqual([
+        expect(skippedState.core.bases[0].minions.map((entry: any) => entry.uid)).toEqual([]);
+        expect(skippedState.core.bases[1].minions.map((entry: any) => entry.uid)).toEqual([]);
+        expect(skippedState.core.players['0'].discard.map((card: any) => card.uid)).toEqual(expect.arrayContaining([
+            'elves-run-more-1',
             'elves-run-more-a',
             'elves-run-more-b',
-            'elves-run-more-opponent',
-        ]);
-        await game.screenshot('木精灵-赶紧逃跑吧-空选后原基地保留', testInfo);
+        ]));
+        expect(skippedState.core.players['1'].discard.map((card: any) => card.uid)).toContain('elves-run-more-opponent');
+        await game.screenshot('木精灵-赶紧逃跑吧-空选后按已开始计分清场', testInfo);
 
         await game.openTestGame('smashup', { skipInitialization: true, seat1: 'human' }, 20000);
         await enterRunAwayMoreChoice('-选择路径');
@@ -17923,13 +18114,23 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
             await expect(page.locator('[data-base-index="0"]').first()).toBeVisible({ timeout: 15000 });
             await game.playCard('alien_invader', { targetBaseIndex: 0 });
             await waitForSmashUpFxToSettle(page);
-            await expect(page.getByRole('button', { name: '树屋' })).toBeVisible({ timeout: 15000 });
-            await page.getByRole('button', { name: '树屋' }).click({ force: true });
+            await game.waitForInteraction('smashup_reaction_choose', 10000);
+            await chooseReactionBySourceDefId(page, game, 'base_treehouse', '树屋选择基地触发');
             await game.waitForInteraction('base_treehouse_choose_player', 10000);
             await waitForSmashUpFxToSettle(page);
-            await expect(page.getByRole('button', { name: '木精灵' })).toBeVisible({ timeout: 15000 });
+            await expectVisibleInteractionOptionBy(
+                page,
+                game,
+                option => option.value?.targetPlayerId === '1',
+                '树屋应显示另一位玩家选项',
+            );
             await game.screenshot('木精灵-树屋-手动选择另一位玩家', testInfo);
-            await page.getByRole('button', { name: '木精灵' }).click({ force: true });
+            await clickVisibleInteractionOptionBy(
+                page,
+                game,
+                option => option.value?.targetPlayerId === '1',
+                '树屋选择另一位玩家',
+            );
 
             const targetPlayerState = await game.getState();
             await mirrorSmashUpHarnessState(targetPage, targetPlayerState);
@@ -18205,15 +18406,19 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await expect(page.locator('[data-minion-uid="clerics-friar-1"]').first()).toBeVisible({ timeout: 15000 });
         await expect(page.locator('[data-minion-uid="clerics-friar-move"]').first()).toBeVisible({ timeout: 15000 });
         await game.advancePhase();
-        await page.waitForFunction(
-            () => {
-                const state = (window as BrowserHarnessWindow).__BG_TEST_HARNESS__?.state?.get?.();
-                return state?.sys?.phase === 'scoreBases'
-                    && state?.sys?.responseWindow?.current?.windowType === 'afterScoring'
-                    && state?.sys?.interaction?.current?.data?.sourceId === 'smashup_reaction_choose';
-            },
-            { timeout: 20000, polling: 200 },
-        );
+        await expect.poll(async () => {
+            const status = await getReactionWindowStatus(page);
+            const state = await game.getState();
+            return {
+                phase: state.sys?.phase,
+                sourceId: status.sourceId,
+                windowType: status.windowType,
+            };
+        }, { timeout: 20000, intervals: [200] }).toEqual({
+            phase: 'scoreBases',
+            sourceId: 'smashup_reaction_choose',
+            windowType: 'afterScoring',
+        });
 
         await game.selectInteractionOptionBy(
             option => option.value?.kind === 'activate_special'
@@ -18242,8 +18447,10 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
         await waitForSmashUpFxToSettle(page);
 
         const state = await game.getState();
-        expect(state.core.bases[0].minions.map((entry: any) => entry.uid)).toEqual(['clerics-friar-1']);
+        expect(state.core.bases[0].minions.map((entry: any) => entry.uid)).toEqual([]);
         expect(state.core.bases[1].minions.map((entry: any) => entry.uid)).toContain('clerics-friar-move');
+        expect(state.core.players['0'].discard.map((entry: any) => entry.uid)).toContain('clerics-friar-1');
+        expect(state.core.players['0'].discard.map((entry: any) => entry.uid)).not.toContain('clerics-friar-move');
         await game.screenshot('牧师-资深修士-随从移动后', testInfo);
     });
 
@@ -18382,9 +18589,10 @@ test.describe('大杀四方 Munchkin 怪物与宝藏 UI', () => {
 
         const state = await game.getState();
         expect(state.core.players['1'].deck[0].uid).toBe('clerics-hotel-other');
-        expect(state.core.players['0'].deck[0].uid).toBe('clerics-hotel-own');
+        expect(state.core.players['0'].hand[0].uid).toBe('clerics-hotel-own');
+        expect(state.core.players['0'].deck.map((entry: any) => entry.uid)).not.toContain('clerics-hotel-own');
         expect(state.core.bases[0].minions).toEqual([]);
-        await game.screenshot('牧师-圣洁酒店-按选择顺序回各自牌库顶', testInfo);
+        await game.screenshot('牧师-圣洁酒店-按选择顺序回牌库顶并完成正常抽牌', testInfo);
     });
 
     test('牧师回忆祷词从其他玩家弃牌堆手动选择一张行动作为额外行动', async ({ page, game }, testInfo) => {

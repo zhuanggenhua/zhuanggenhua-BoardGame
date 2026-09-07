@@ -4,9 +4,7 @@ import {
     cloneScenarioRuntimeStatus,
     syncCurrentExplorerProjection,
 } from './coreStateModel';
-import {
-    applyBetrayalDamageAllocationResolvedState,
-} from './damageResolutionModel';
+import { applyBetrayalDamageAllocationResolvedState } from './damageResolutionModel';
 import {
     addFeverishMonsterForPlayer,
     markDeadExplorer,
@@ -29,8 +27,8 @@ import { resolveRecommendedAction } from './recommendedActionReadModel';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type DamageAllocationResolvedEvent = Extract<BetrayalEvent, { type: 'DAMAGE_ALLOCATION_RESOLVED' }>;
 type TurnEndRollAcknowledgedPayload = Extract<BetrayalEvent, { type: 'TURN_END_ROLL_ACKNOWLEDGED' }>['payload'];

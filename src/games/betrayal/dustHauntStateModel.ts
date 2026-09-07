@@ -13,8 +13,8 @@ import { BETRAYAL_TRAIT_LABEL as TRAIT_LABEL } from './possessionEffects';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type DustSearchResolvedEvent = Extract<BetrayalEvent, { type: 'DUST_SEARCH_RESOLVED' }>;
 type DustCureResolvedEvent = Extract<BetrayalEvent, { type: 'DUST_CURE_RESOLVED' }>;

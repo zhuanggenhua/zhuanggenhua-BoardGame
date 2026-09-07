@@ -68,7 +68,6 @@ describe('DiceBoxPhysicsSource', () => {
                     .mockReturnValue(true),
                 rollToValues: vi.fn().mockResolvedValue(undefined),
                 rerollToValues: vi.fn().mockResolvedValue(undefined),
-                playRerollLaunchPreview: vi.fn().mockResolvedValue(undefined),
                 syncSettledValues: vi.fn(),
                 previewValues: vi.fn(),
                 clear: vi.fn(),
@@ -123,7 +122,6 @@ describe('DiceBoxPhysicsSource', () => {
             hasDice: vi.fn().mockReturnValue(false),
             rollToValues: vi.fn(),
             rerollToValues: vi.fn(),
-            playRerollLaunchPreview: vi.fn().mockResolvedValue(undefined),
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),
@@ -168,7 +166,6 @@ describe('DiceBoxPhysicsSource', () => {
             hasDice: vi.fn().mockReturnValue(true),
             rollToValues: vi.fn().mockResolvedValue(undefined),
             rerollToValues: vi.fn().mockResolvedValue(undefined),
-            playRerollLaunchPreview: vi.fn().mockResolvedValue(undefined),
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),
@@ -226,7 +223,6 @@ describe('DiceBoxPhysicsSource', () => {
             hasDice: vi.fn().mockReturnValue(false),
             rollToValues: vi.fn(),
             rerollToValues: vi.fn(),
-            playRerollLaunchPreview: vi.fn().mockResolvedValue(undefined),
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),
@@ -266,7 +262,6 @@ describe('DiceBoxPhysicsSource', () => {
             getPhysicsState: vi.fn(),
             hasDice: vi.fn().mockReturnValue(true),
             rerollToValues,
-            playRerollLaunchPreview: vi.fn().mockResolvedValue(undefined),
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),
@@ -307,17 +302,12 @@ describe('DiceBoxPhysicsSource', () => {
         });
     });
 
-    it('重掷停稳状态必须等真实重掷和可见过程窗口都结束', async () => {
-        let finishPreview: (() => void) | undefined;
+    it('重掷停稳状态必须等插件真实重掷结束', async () => {
         let finishReroll: (() => void) | undefined;
-        const preview = new Promise<void>((resolve) => {
-            finishPreview = resolve;
-        });
         const reroll = new Promise<void>((resolve) => {
             finishReroll = resolve;
         });
         const rerollToValues = vi.fn().mockImplementation(() => reroll);
-        const playRerollLaunchPreview = vi.fn().mockImplementation(() => preview);
         const engineMock = {
             resize: vi.fn(),
             destroy: vi.fn(),
@@ -327,7 +317,6 @@ describe('DiceBoxPhysicsSource', () => {
             getPhysicsState: vi.fn(),
             hasDice: vi.fn().mockReturnValue(true),
             rerollToValues,
-            playRerollLaunchPreview,
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),
@@ -344,21 +333,8 @@ describe('DiceBoxPhysicsSource', () => {
         );
 
         await waitFor(() => {
-            expect(playRerollLaunchPreview).toHaveBeenCalledTimes(1);
-        });
-        expect(rerollToValues).not.toHaveBeenCalled();
-        expect(view.getByTestId('dice-box-physics-source')).toHaveAttribute('data-dice-settled', 'false');
-
-        await act(async () => {
-            finishPreview?.();
-        });
-
-        await waitFor(() => {
             expect(rerollToValues).toHaveBeenCalledTimes(1);
         });
-        expect(
-            playRerollLaunchPreview.mock.invocationCallOrder[0],
-        ).toBeLessThan(rerollToValues.mock.invocationCallOrder[0]);
         expect(view.getByTestId('dice-box-physics-source')).toHaveAttribute('data-dice-settled', 'false');
 
         await act(async () => {
@@ -370,14 +346,13 @@ describe('DiceBoxPhysicsSource', () => {
         });
     });
 
-    it('重掷时会先恢复重掷前骰面再播放过程动画', async () => {
-        let finishPreview: (() => void) | undefined;
-        const preview = new Promise<void>((resolve) => {
-            finishPreview = resolve;
+    it('重掷时会先恢复重掷前骰面再进入插件真实重掷', async () => {
+        let finishReroll: (() => void) | undefined;
+        const reroll = new Promise<void>((resolve) => {
+            finishReroll = resolve;
         });
         const restoreValues = vi.fn().mockResolvedValue(undefined);
-        const playRerollLaunchPreview = vi.fn().mockImplementation(() => preview);
-        const rerollToValues = vi.fn().mockResolvedValue(undefined);
+        const rerollToValues = vi.fn().mockImplementation(() => reroll);
         const engineMock = {
             resize: vi.fn(),
             destroy: vi.fn(),
@@ -387,7 +362,6 @@ describe('DiceBoxPhysicsSource', () => {
             getPhysicsState: vi.fn(),
             hasDice: vi.fn().mockReturnValue(false),
             rerollToValues,
-            playRerollLaunchPreview,
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),
@@ -404,20 +378,15 @@ describe('DiceBoxPhysicsSource', () => {
         );
 
         await waitFor(() => {
-            expect(playRerollLaunchPreview).toHaveBeenCalledTimes(1);
+            expect(rerollToValues).toHaveBeenCalledWith([0], [6], []);
         });
         expect(restoreValues).toHaveBeenCalledWith([2]);
         expect(
             restoreValues.mock.invocationCallOrder[0],
-        ).toBeLessThan(playRerollLaunchPreview.mock.invocationCallOrder[0]);
-        expect(rerollToValues).not.toHaveBeenCalled();
+        ).toBeLessThan(rerollToValues.mock.invocationCallOrder[0]);
 
         await act(async () => {
-            finishPreview?.();
-        });
-
-        await waitFor(() => {
-            expect(rerollToValues).toHaveBeenCalledWith([0], [6], []);
+            finishReroll?.();
         });
     });
 
@@ -438,7 +407,6 @@ describe('DiceBoxPhysicsSource', () => {
             getPhysicsState: vi.fn(),
             hasDice: vi.fn().mockReturnValue(true),
             rerollToValues: vi.fn().mockImplementation(() => rolling),
-            playRerollLaunchPreview: vi.fn().mockResolvedValue(undefined),
             syncSettledValues: vi.fn(),
             previewValues: vi.fn(),
             clear: vi.fn(),

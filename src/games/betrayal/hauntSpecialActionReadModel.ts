@@ -1,14 +1,18 @@
 import type { ValidationResult } from '../../engine/types';
 import { BETRAYAL_COMMANDS } from './commands';
-import { findExplorerByPlayerId, getAllExplorers } from './explorerReadModel';
+import {
+    findExplorerByPlayerId,
+    getAllExplorers,
+} from './explorerReadModel';
 import type {
-    BetrayalCommandType,
     BetrayalCore,
     BetrayalExplorerSummary,
     BetrayalMonsterSummary,
     BetrayalRoomFloor,
     BetrayalRoomNode,
+    BetrayalTraitKey,
 } from './game';
+import type { BetrayalCommandType } from './commandTypes';
 import {
     findMummyMonster,
     hasLivingHeroWithBookInRoom,
@@ -27,7 +31,10 @@ import {
     resolveControlledRoomId,
 } from './hauntScenarioReadModel';
 import { resolveMonsterStatusKind } from './monsterReadModel';
-import { isBetrayalRoomInLineOfSight, isStraightLineVisible } from './roomMapModel';
+import {
+    isBetrayalRoomInLineOfSight,
+    isStraightLineVisible,
+} from './roomMapModel';
 
 export interface BetrayalBloodFromStonePeekabooOption {
     id: string;
@@ -40,6 +47,19 @@ export interface BetrayalBloodFromStonePeekabooOption {
     lineOfSightRoomId: string;
     lineOfSightRoomName: string;
 }
+
+export interface BetrayalHauntSpecialActionTargetSelectionReadModel {
+    magicCameraPhotoTargets: BetrayalExplorerSummary[];
+    magicCameraPhotoTargetPlayerIds: ReadonlySet<string>;
+    magicCameraPhotoTarget: BetrayalExplorerSummary | null;
+    magicCameraPhotoTrait: BetrayalTraitKey;
+    bloodFromStonePeekabooOptions: BetrayalBloodFromStonePeekabooOption[];
+    bloodFromStonePeekabooSameRoomMonsterIds: ReadonlySet<string>;
+    bloodFromStonePeekabooLineOfSightMonsterIds: ReadonlySet<string>;
+    isBloodFromStonePeekabooMode: boolean;
+}
+
+const MAGIC_CAMERA_PHOTO_TRAITS: readonly BetrayalTraitKey[] = ['might', 'speed', 'knowledge', 'sanity'];
 
 export type BetrayalHauntSpecialActionId =
     | 'learn-about-jack'
@@ -447,6 +467,63 @@ export function resolveBloodFromStonePeekabooOptions(
         }
     }
     return options;
+}
+
+export function resolveBetrayalHauntSpecialActionTargetSelectionReadModel({
+    core,
+    selectedMagicCameraTargetPlayerId,
+    selectedPeekabooSameRoomMonsterId,
+    hauntTargetingActionKind,
+}: {
+    core: BetrayalCore;
+    selectedMagicCameraTargetPlayerId: string | null;
+    selectedPeekabooSameRoomMonsterId: string | null;
+    hauntTargetingActionKind: string | null;
+}): BetrayalHauntSpecialActionTargetSelectionReadModel {
+    const magicCameraPhotoTargets = core.phase === 'haunt'
+        ? resolveMagicCameraPhotoTargets(core, core.currentExplorer)
+        : [];
+    const magicCameraPhotoTarget =
+        (selectedMagicCameraTargetPlayerId
+            && magicCameraPhotoTargets.find((explorer) => explorer.playerId === selectedMagicCameraTargetPlayerId))
+        || magicCameraPhotoTargets[0]
+        || null;
+    const magicCameraPhotoTrait = MAGIC_CAMERA_PHOTO_TRAITS.reduce(
+        (lowestTrait, trait) => (
+            core.currentExplorer.traits[trait] < core.currentExplorer.traits[lowestTrait]
+                ? trait
+                : lowestTrait
+        ),
+        'might' as BetrayalTraitKey,
+    );
+    const bloodFromStonePeekabooOptions = resolveBloodFromStonePeekabooOptions(
+        core,
+        core.currentExplorer.playerId,
+    );
+    const peekabooLineOfSightOptions = selectedPeekabooSameRoomMonsterId
+        ? bloodFromStonePeekabooOptions.filter(
+            (option) => option.sameRoomMonsterId === selectedPeekabooSameRoomMonsterId,
+        )
+        : bloodFromStonePeekabooOptions;
+
+    return {
+        magicCameraPhotoTargets,
+        magicCameraPhotoTargetPlayerIds: new Set(
+            magicCameraPhotoTargets.map((target) => target.playerId),
+        ),
+        magicCameraPhotoTarget,
+        magicCameraPhotoTrait,
+        bloodFromStonePeekabooOptions,
+        bloodFromStonePeekabooSameRoomMonsterIds: new Set(
+            bloodFromStonePeekabooOptions.map((option) => option.sameRoomMonsterId),
+        ),
+        bloodFromStonePeekabooLineOfSightMonsterIds: new Set(
+            peekabooLineOfSightOptions.map((option) => option.lineOfSightMonsterId),
+        ),
+        isBloodFromStonePeekabooMode:
+            hauntTargetingActionKind === 'play-peekaboo'
+            && bloodFromStonePeekabooOptions.length > 0,
+    };
 }
 
 export function resolveBloodFromStonePeekabooSelection(

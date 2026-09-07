@@ -7,14 +7,16 @@ import {
   type Page,
 } from "@playwright/test";
 import {
-  BETRAYAL_COMMANDS,
-  type BetrayalCommand,
-  type BetrayalCommandMap,
-  type BetrayalCore,
-  type BetrayalTraitKey,
-  createBetrayalMonsterFromDefinition,
-  createBetrayalMonsterEncounterCore,
+    type BetrayalCore,
+    type BetrayalTraitKey,
+    createBetrayalMonsterFromDefinition,
+    createBetrayalMonsterEncounterCore,
 } from "../../src/games/betrayal/game";
+import { BETRAYAL_COMMANDS } from "../../src/games/betrayal/commands";
+import type {
+    BetrayalCommand,
+    BetrayalCommandMap,
+} from "../../src/games/betrayal/commandTypes";
 import { BETRAYAL_DISCOVERY_POOLS } from "../../src/games/betrayal/scenarioConfig";
 import {
   applyBetrayalCommand,
@@ -594,18 +596,58 @@ export const expectEventRollWorkbenchReadable = async (
         const dieIndex = Number(
           target.dataset.testid?.match(/-(\d+)$/)?.[1] ?? "NaN",
         );
-        const candidateUnderline = target.querySelector<HTMLElement>(
-          '[data-reroll-target-candidate-underline="true"]',
+        const domCandidateVisual = target.querySelector<Element>(
+          '[data-reroll-target-candidate-box="true"]',
         );
-        const selectedBorder = target.querySelector<HTMLElement>(
+        const selectedBorder = target.querySelector<Element>(
           '[data-reroll-target-selected-border="true"]',
         );
+        const visibleOutline = domCandidateVisual ?? selectedBorder;
+        const outlineStyle = visibleOutline
+          ? getComputedStyle(visibleOutline)
+          : null;
+        const outlineStroke =
+          visibleOutline?.querySelector<Element>(
+            '[data-reroll-target-outline-stroke="true"]',
+          ) ?? visibleOutline;
+        const outlineStrokeStyle = outlineStroke
+          ? getComputedStyle(outlineStroke)
+          : null;
+        const parsePx = (value: string | undefined) =>
+          Number.parseFloat(value ?? "0") || 0;
+        const parseAlpha = (value: string | undefined) => {
+          if (!value || value === "transparent") return 0;
+          const parts = value
+            .replace(/[^\d.,]/g, "")
+            .split(",")
+            .filter(Boolean)
+            .map(Number);
+          return parts.length >= 4 ? parts[3] : 1;
+        };
         const visibleWidth = Number(target.dataset.rerollTargetVisualWidth);
         const visibleHeight = Number(target.dataset.rerollTargetVisualHeight);
+        const hitWidth = Number(target.dataset.rerollTargetHitWidth);
+        const hitHeight = Number(target.dataset.rerollTargetHitHeight);
         const boxSize = Number(target.dataset.rerollTargetBoxSize);
         const visibleMax = Math.max(visibleWidth, visibleHeight);
         const outlineGap = Number(target.dataset.rerollTargetOutlineGap);
-        const hitBoxPadding = (boxSize - visibleMax) / 2;
+        const hitBoxPadding = Math.max(
+          0,
+          (hitWidth - visibleWidth) / 2,
+          (hitHeight - visibleHeight) / 2,
+        );
+        const outlineBorderMaxPx = outlineStyle
+          ? Math.max(
+              parsePx(outlineStyle.borderTopWidth),
+              parsePx(outlineStyle.borderRightWidth),
+              parsePx(outlineStyle.borderBottomWidth),
+              parsePx(outlineStyle.borderLeftWidth),
+            )
+          : 0;
+        const outlineEffect =
+          outlineStyle && outlineStyle.filter !== "none"
+            ? outlineStyle.filter
+            : outlineStyle?.boxShadow ?? "";
         const webglHighlight =
           diceHighlights.find((highlight) => highlight.dieIndex === dieIndex) ??
           null;
@@ -618,23 +660,45 @@ export const expectEventRollWorkbenchReadable = async (
           selected: target.dataset.rerollTargetSelected === "true",
           shape: target.dataset.rerollTargetShape ?? "",
           highlightRenderer: target.dataset.rerollTargetHighlightRenderer ?? "",
+          visualContract: target.dataset.rerollTargetVisualContract ?? "",
           visualLayer: target.dataset.rerollTargetVisualLayer ?? "",
+          outlinePaint: target.dataset.rerollTargetOutlinePaint ?? "",
+          outlineRotateZ: Number(target.dataset.rerollTargetOutlineRotateZ),
+          outlinePointCount: Number(target.dataset.rerollTargetOutlinePointCount),
+          outlinePoints: target.dataset.rerollTargetOutlinePoints ?? "",
+          targetTransform: getComputedStyle(target).transform,
           left: rect.left,
           right: rect.right,
           top: rect.top,
           bottom: rect.bottom,
           centerX: rect.left + rect.width / 2,
           centerY: rect.top + rect.height / 2,
-          targetWidth: rect.width,
-          targetHeight: rect.height,
+          screenWidth: rect.width,
+          screenHeight: rect.height,
+          targetWidth: hitWidth,
+          targetHeight: hitHeight,
           boxSize,
           visibleWidth,
           visibleHeight,
           visibleMax,
           outlineGap,
           hitBoxPadding,
-          candidateUnderlineExists: Boolean(candidateUnderline),
+          domCandidateVisualExists: Boolean(domCandidateVisual),
           selectedBorderExists: Boolean(selectedBorder),
+          outlineExists: Boolean(visibleOutline),
+          outlineWidth: outlineStrokeStyle
+            ? parsePx(outlineStrokeStyle.strokeWidth)
+            : outlineStyle
+              ? parsePx(outlineStyle.outlineWidth)
+              : 0,
+          outlineOffset: outlineStyle ? parsePx(outlineStyle.outlineOffset) : 0,
+          outlineColor:
+            outlineStrokeStyle?.stroke ?? outlineStyle?.outlineColor ?? "",
+          outlineBorderMaxPx,
+          outlineBackgroundAlpha: parseAlpha(
+            outlineStrokeStyle?.fill ?? outlineStyle?.backgroundColor,
+          ),
+          outlineBoxShadow: outlineEffect,
           webglHighlight,
           webglShell,
         };
@@ -672,9 +736,11 @@ export const expectEventRollWorkbenchReadable = async (
       rerollLayerText: rerollLayerElement?.innerText.trim() ?? "",
       rerollHighlightRenderer:
         rerollLayerElement?.dataset.rerollHighlightRenderer ?? "",
+      rerollVisualContract:
+        rerollLayerElement?.dataset.rerollVisualContract ?? "",
       rerollDomVisualBoxCount: rerollLayerElement
         ? rerollLayerElement.querySelectorAll(
-            '[data-reroll-target-candidate-underline="true"], [data-reroll-target-selected-border="true"]',
+            '[data-reroll-target-candidate-underline="true"], [data-reroll-target-candidate-box="true"], [data-reroll-target-selected-border="true"]',
           ).length
         : 0,
       diceHighlightDebugKey: activeCanvasTestId ?? "",
@@ -814,45 +880,49 @@ export const expectEventRollWorkbenchReadable = async (
     const selectedRerollTargetCount = metrics.rerollTargets.filter(
       (target) => target.selected,
     ).length;
-    const expectedWebglRenderer =
-      selectedRerollTargetCount > 0 ? "threejs-backside-shader-shell" : "none";
     expect(
       metrics.rerollHighlightRenderer,
-      `${label}兔脚改骰高亮必须区分候选底描边和选中 3D 描边：${JSON.stringify(metrics)}`,
-    ).toBe("candidate-bottom-underline-selected-threejs-shell");
+      `${label}兔脚改骰必须保留 Three.js 骰体描边作为本体外壳辅助：${JSON.stringify(metrics)}`,
+    ).toBe("threejs-backside-shader-shell");
+    expect(
+      metrics.rerollVisualContract,
+      `${label}兔脚改骰必须使用骰面投影 SVG 外描边 + Three.js 外壳的当前视觉合同：${JSON.stringify(metrics)}`,
+    ).toBe("projected-face-svg-outline-plus-threejs-shell");
     expect(
       metrics.diceHighlightSourceRenderer,
-      `${label}只有选中骰子才应声明 WebGL 高亮，未选候选不能套环：${JSON.stringify(metrics)}`,
-    ).toBe(expectedWebglRenderer);
+      `${label}物理骰源必须声明 WebGL 高亮渲染器：${JSON.stringify(metrics)}`,
+    ).toBe("threejs-backside-shader-shell");
     expect(
       metrics.diceHighlightCanvasRenderer,
-      `${label}canvas 只能收到选中骰子的 WebGL 高亮状态：${JSON.stringify(metrics)}`,
-    ).toBe(expectedWebglRenderer);
+      `${label}canvas 必须收到 WebGL 高亮状态：${JSON.stringify(metrics)}`,
+    ).toBe("threejs-backside-shader-shell");
     expect(
       metrics.rerollDomVisualBoxCount,
-      `${label}每颗骰子必须只有一个候选底线或选中描边，不能缺席或重复：${JSON.stringify(metrics)}`,
+      `${label}每个可选骰子都必须有一个玩家可见、贴投影边缘的外描边：${JSON.stringify(metrics)}`,
     ).toBe(metrics.rerollTargets.length);
     expect(
       metrics.diceHighlightCount,
-      `${label}未选骰子不得生成 Three.js 候选外壳：${JSON.stringify(metrics)}`,
-    ).toBe(selectedRerollTargetCount);
+      `${label}每个可选骰子都必须有一个 Three.js 高亮状态：${JSON.stringify(metrics)}`,
+    ).toBe(metrics.rerollTargets.length);
     expect(
       metrics.diceHighlightShellCount,
-      `${label}只有选中骰子才有真实 WebGL 外壳描边 mesh：${JSON.stringify(metrics)}`,
-    ).toBe(selectedRerollTargetCount);
+      `${label}每个可选骰子都必须有一个真实 WebGL 外壳描边 mesh：${JSON.stringify(metrics)}`,
+    ).toBe(metrics.rerollTargets.length);
     for (let leftIndex = 0; leftIndex < metrics.rerollTargets.length; leftIndex += 1) {
       for (let rightIndex = leftIndex + 1; rightIndex < metrics.rerollTargets.length; rightIndex += 1) {
         const leftTarget = metrics.rerollTargets[leftIndex];
         const rightTarget = metrics.rerollTargets[rightIndex];
+        const leftInflate = Math.max(0, leftTarget.outlineOffset + leftTarget.outlineWidth);
+        const rightInflate = Math.max(0, rightTarget.outlineOffset + rightTarget.outlineWidth);
         const overlapWidth = Math.max(
           0,
-          Math.min(leftTarget.right, rightTarget.right) -
-            Math.max(leftTarget.left, rightTarget.left),
+          Math.min(leftTarget.right + leftInflate, rightTarget.right + rightInflate) -
+            Math.max(leftTarget.left - leftInflate, rightTarget.left - rightInflate),
         );
         const overlapHeight = Math.max(
           0,
-          Math.min(leftTarget.bottom, rightTarget.bottom) -
-            Math.max(leftTarget.top, rightTarget.top),
+          Math.min(leftTarget.bottom + leftInflate, rightTarget.bottom + rightInflate) -
+            Math.max(leftTarget.top - leftInflate, rightTarget.top - rightInflate),
         );
         expect(
           overlapWidth * overlapHeight,
@@ -867,17 +937,44 @@ export const expectEventRollWorkbenchReadable = async (
       );
       expect(
         target.highlightRenderer,
-        `${label}改骰高亮渲染器必须符合候选/选中分层：${evidence}`,
-      ).toBe(target.selected ? "threejs-backside-shader-shell" : "dom-bottom-underline");
-      expect(target.visualLayer).toBe(
-        target.selected
-          ? "selected-outline-and-webgl-shell"
-          : "candidate-bottom-underline",
-      );
+        `${label}WebGL 辅助高亮必须来自 Three.js 骰体描边：${evidence}`,
+      ).toBe("threejs-backside-shader-shell");
       expect(
-        Math.abs(target.targetWidth - target.targetHeight),
-        `${label}改骰命中区必须是方框，不得退成文字按钮或长条：${evidence}`,
-      ).toBeLessThanOrEqual(1);
+        target.visualContract,
+        `${label}改骰目标必须使用当前骰面投影 SVG 外描边视觉合同：${evidence}`,
+      ).toBe("projected-face-svg-outline-plus-threejs-shell");
+      expect(
+        target.visualLayer,
+        `${label}可见方框必须是骰面投影 SVG 外描边加 Three.js 外壳，不得回到离体大框：${evidence}`,
+      ).toBe("projected-face-svg-outline-plus-threejs-shell");
+      expect(
+        target.outlinePaint,
+        `${label}可见方框必须来自当前可见骰面四角投影，不能退回轴对齐大框：${evidence}`,
+      ).toBe("projected-face-outside-svg-outline");
+      expect(
+        Number.isFinite(target.outlineRotateZ),
+        `${label}可见方框必须暴露屏幕旋转角，证明不是固定轴对齐框：${evidence}`,
+      ).toBe(true);
+      expect(
+        target.outlinePointCount,
+        `${label}可见方框必须有当前可见骰面的四角投影点：${evidence}`,
+      ).toBeGreaterThanOrEqual(4);
+      expect(
+        target.outlinePoints,
+        `${label}可见方框必须暴露屏幕投影点，避免退回离体矩形：${evidence}`,
+      ).toMatch(/\d/);
+      expect(
+        target.targetTransform,
+        `${label}可见方框必须应用投影旋转 transform：${evidence}`,
+      ).not.toBe("none");
+      expect(
+        Math.abs(target.targetWidth - target.visibleWidth),
+        `${label}改骰方框宽度必须贴真实骰子投影：${evidence}`,
+      ).toBeLessThanOrEqual(1.5);
+      expect(
+        Math.abs(target.targetHeight - target.visibleHeight),
+        `${label}改骰方框高度必须贴真实骰子投影：${evidence}`,
+      ).toBeLessThanOrEqual(1.5);
       expect(
         target.visibleMax,
         `${label}改骰方框必须来自真实 Three.js 骰子投影尺寸：${evidence}`,
@@ -893,52 +990,84 @@ export const expectEventRollWorkbenchReadable = async (
       expect(
         target.hitBoxPadding,
         `${label}透明命中区不能过大到让玩家误判归属：${evidence}`,
-      ).toBeLessThanOrEqual(4);
+      ).toBeLessThanOrEqual(1);
       expect(
-        target.candidateUnderlineExists,
-        `${label}候选态必须用底部短描边，选中态不能继续显示候选底线：${evidence}`,
+        target.domCandidateVisualExists,
+        `${label}未选候选必须有清晰外描边，选中后候选描边退场：${evidence}`,
       ).toBe(!target.selected);
       expect(
         target.selectedBorderExists,
-        `${label}只有选中骰子才显示贴合描边：${evidence}`,
+        `${label}只有选中骰子显示选中外描边：${evidence}`,
       ).toBe(target.selected);
+      expect(
+        target.outlineExists,
+        `${label}骰子必须有玩家可见外描边：${evidence}`,
+      ).toBe(true);
+      expect(
+        target.outlineOffset,
+        `${label}外描边必须贴边，不能产生离体空隙：${evidence}`,
+      ).toBe(0);
+      expect(
+        target.outlineBorderMaxPx,
+        `${label}外描边不得用 border 向内盖住骰面：${evidence}`,
+      ).toBe(0);
+      expect(
+        target.outlineBackgroundAlpha,
+        `${label}外描边内部必须透明，不得盖住骰子：${evidence}`,
+      ).toBe(0);
+      expect(
+        target.outlineBoxShadow,
+        `${label}外描边需要发光辅助，不能弱到看不清：${evidence}`,
+      ).not.toBe("none");
+      expect(
+        target.webglHighlight,
+        `${label}必须能从 Three.js 快照读到当前骰子的高亮状态：${evidence}`,
+      ).not.toBeNull();
+      expect(
+        target.webglShell,
+        `${label}必须能从 Three.js 场景读到当前骰子的描边外壳：${evidence}`,
+      ).not.toBeNull();
+      expect(
+        target.webglShell?.renderer,
+        `${label}描边外壳必须是 Three.js 背面外壳渲染器：${evidence}`,
+      ).toBe("threejs-backside-shader-shell");
+      expect(
+        target.webglShell?.visible,
+        `${label}描边外壳必须可见：${evidence}`,
+      ).toBe(true);
+      expect(
+        target.webglShell?.materialType,
+        `${label}描边外壳必须使用 Three.js ShaderMaterial，而不是 DOM/CSS 框或普通透明贴片：${evidence}`,
+      ).toBe("ShaderMaterial");
+      expect(
+        target.webglShell?.materialSide,
+        `${label}描边外壳必须用背面材质，只露骰子外缘不盖骰面：${evidence}`,
+      ).toBe(1);
+      expect(
+        target.webglShell?.depthWrite,
+        `${label}描边外壳不能写入深度，否则可能遮住骰子：${evidence}`,
+      ).toBe(false);
+      expect(
+        target.webglShell?.transparent,
+        `${label}描边外壳必须是透明材质，不能变成实心块：${evidence}`,
+      ).toBe(true);
+      expect(
+        target.webglShell?.shaderOpacity,
+        `${label}shader 透明度必须随候选/选中状态同步：${evidence}`,
+      ).toBe(target.webglShell?.opacity);
       if (target.selected) {
         expect(
-          target.webglHighlight,
-          `${label}选中骰子必须能从 Three.js 快照读到高亮状态：${evidence}`,
-        ).not.toBeNull();
+          target.outlineColor,
+          `${label}选中外描边必须是清晰黄色：${evidence}`,
+        ).toMatch(/255,\s*212,\s*71/);
         expect(
-          target.webglShell,
-          `${label}选中骰子必须能从 Three.js 场景读到描边外壳：${evidence}`,
-        ).not.toBeNull();
+          target.outlineWidth,
+          `${label}选中外描边必须比候选态更粗：${evidence}`,
+        ).toBeGreaterThanOrEqual(3);
         expect(
-          target.webglShell?.renderer,
-          `${label}描边外壳必须是 Three.js 背面外壳渲染器：${evidence}`,
-        ).toBe("threejs-backside-shader-shell");
-        expect(
-          target.webglShell?.visible,
-          `${label}描边外壳必须可见：${evidence}`,
-        ).toBe(true);
-        expect(
-          target.webglShell?.materialType,
-          `${label}描边外壳必须使用 Three.js ShaderMaterial，而不是 DOM/CSS 框或普通透明贴片：${evidence}`,
-        ).toBe("ShaderMaterial");
-        expect(
-          target.webglShell?.materialSide,
-          `${label}描边外壳必须用背面材质，只露骰子外缘不盖骰面：${evidence}`,
-        ).toBe(1);
-        expect(
-          target.webglShell?.depthWrite,
-          `${label}描边外壳不能写入深度，否则可能遮住骰子：${evidence}`,
-        ).toBe(false);
-        expect(
-          target.webglShell?.transparent,
-          `${label}描边外壳必须是透明材质，不能变成实心块：${evidence}`,
-        ).toBe(true);
-        expect(
-          target.webglShell?.shaderOpacity,
-          `${label}shader 透明度必须随选中状态同步：${evidence}`,
-        ).toBe(target.webglShell?.opacity);
+          target.outlineWidth,
+          `${label}选中外描边不能粗到盖住骰子归属：${evidence}`,
+        ).toBeLessThanOrEqual(4);
         expect(
           target.webglHighlight?.variant,
           `${label}选中骰子必须升级为 selected WebGL 高亮：${evidence}`,
@@ -950,24 +1079,48 @@ export const expectEventRollWorkbenchReadable = async (
         expect(
           target.webglShell?.scale,
           `${label}选中描边要比候选态更清楚，但仍贴近骰子：${evidence}`,
-        ).toBeGreaterThanOrEqual(1.045);
+        ).toBeGreaterThanOrEqual(1.06);
         expect(
           target.webglShell?.scale,
           `${label}选中描边不能外扩成离体大框：${evidence}`,
-        ).toBeLessThanOrEqual(1.065);
+        ).toBeLessThanOrEqual(1.075);
         expect(
           target.webglShell?.opacity,
           `${label}选中描边必须清晰可见：${evidence}`,
         ).toBeGreaterThanOrEqual(0.9);
       } else {
         expect(
-          target.webglHighlight,
-          `${label}未选骰子不得生成 Three.js 候选高亮：${evidence}`,
-        ).toBeNull();
+          target.outlineColor,
+          `${label}候选外描边必须是清晰青色：${evidence}`,
+        ).toMatch(/0,\s*231,\s*255/);
         expect(
-          target.webglShell,
-          `${label}未选骰子不得生成 Three.js 候选外壳：${evidence}`,
-        ).toBeNull();
+          target.outlineWidth,
+          `${label}候选外描边必须清晰可见：${evidence}`,
+        ).toBeGreaterThanOrEqual(2);
+        expect(
+          target.outlineWidth,
+          `${label}候选外描边不能粗到像已选中：${evidence}`,
+        ).toBeLessThanOrEqual(3);
+        expect(
+          target.webglHighlight?.variant,
+          `${label}未选骰子必须显示 candidate WebGL 高亮：${evidence}`,
+        ).toBe("candidate");
+        expect(
+          target.webglShell?.variant,
+          `${label}未选骰子的外壳必须同步为 candidate：${evidence}`,
+        ).toBe("candidate");
+        expect(
+          target.webglShell?.scale,
+          `${label}候选描边必须是贴近骰子的弱候选态，不能像已选中：${evidence}`,
+        ).toBeGreaterThanOrEqual(1.04);
+        expect(
+          target.webglShell?.scale,
+          `${label}候选描边不能外扩成离体大框：${evidence}`,
+        ).toBeLessThanOrEqual(1.055);
+        expect(
+          target.webglShell?.opacity,
+          `${label}候选描边不能弱到看不清：${evidence}`,
+        ).toBeGreaterThanOrEqual(0.9);
       }
     }
   }
@@ -1165,7 +1318,7 @@ export const expectVisiblePhysicalDiceBox = async (rollPanel: Locator) => {
   );
   await expect(physicsSource).toHaveAttribute(
     "data-dice-face-system",
-    "betrayal-house-0-1-2-per-die-skin",
+    "betrayal-house-0-0-1-1-2-2-face-skin",
   );
   const readableFaceOverlay = rollPanel.getByTestId(
     "betrayal-house-dice-readable-faces",
@@ -1212,7 +1365,7 @@ export const expectVisiblePhysicalDiceBox = async (rollPanel: Locator) => {
             return false;
           if (
             source?.dataset.diceFaceSystem !==
-            "betrayal-house-0-1-2-per-die-skin"
+            "betrayal-house-0-0-1-1-2-2-face-skin"
           )
             return false;
 
@@ -1555,13 +1708,18 @@ export const armPhysicalDiceRerollMotionCapture = async (
             screenShiftPx: dieScreenShiftPx,
           };
         });
-        if (
-          sampleIsRerolling &&
-          Math.max(screenShiftPx, screenBoundsShiftPx) >=
-            captureOptions.minScreenShiftPx
-        ) {
+        const motionEvidenceType =
+          Math.max(screenShiftPx, screenBoundsShiftPx) >= captureOptions.minScreenShiftPx
+            ? "screen-shift"
+            : positionShift >= captureOptions.minPositionShiftPx
+              ? "position-shift"
+              : rotationShift >= captureOptions.minRotationShiftRad
+                ? "rotation-shift"
+                : "";
+        if (sampleIsRerolling && motionEvidenceType) {
           capture.latestVisibleEvidence = {
             detectedAt: now,
+            motionEvidenceType,
             screenShiftPx,
             screenBoundsShiftPx,
             positionShift,
@@ -1601,8 +1759,11 @@ export const armPhysicalDiceRerollMotionCapture = async (
             }>;
             latestVisibleEvidence: {
               detectedAt?: number;
+              motionEvidenceType?: string;
               screenShiftPx?: number;
               screenBoundsShiftPx?: number;
+              positionShift?: number;
+              rotationShift?: number;
               shiftedDice?: unknown[];
               before?: { at?: number } | null;
               after?: { at?: number } | null;
@@ -1738,10 +1899,20 @@ export const armPhysicalDiceRerollMotionCapture = async (
         if (!canvas || !rect || rect.width <= 0 || rect.height <= 0) {
           return null;
         }
+        type Motion = {
+          x: number;
+          y: number;
+          z: number;
+          rotateX: number;
+          rotateY: number;
+          rotateZ: number;
+        };
         type Layout = { x: number; y: number; minX: number; maxX: number; minY: number; maxY: number };
         type Sample = {
           motionType: string;
           settled: string;
+          motion: Motion | null;
+          motions: Array<Motion | null>;
           layout: Layout | null;
           layouts: Array<Layout | null>;
         };
@@ -1755,7 +1926,7 @@ export const armPhysicalDiceRerollMotionCapture = async (
           >;
           __diceBoxThreeDebug?: Record<
             string,
-            () => { dice?: Array<{ layout?: Layout | null }> } | null
+            () => { dice?: Array<{ layout?: Layout | null; motion?: Motion | null }> } | null
           >;
         };
         const capture =
@@ -1786,11 +1957,17 @@ export const armPhysicalDiceRerollMotionCapture = async (
           : null;
         const currentLayout =
           snapshot?.dice?.[captureOptions.dieIndex]?.layout ?? null;
+        const currentMotion =
+          snapshot?.dice?.[captureOptions.dieIndex]?.motion ?? null;
         const baselineLayout =
           baseline?.layouts?.[captureOptions.dieIndex] ??
           baseline?.layout ??
           null;
-        if (!baselineLayout || !currentLayout) {
+        const baselineMotion =
+          baseline?.motions?.[captureOptions.dieIndex] ??
+          baseline?.motion ??
+          null;
+        if (!baselineLayout || !currentLayout || !baselineMotion || !currentMotion) {
           return null;
         }
         const screenShiftPx = Math.hypot(
@@ -1804,7 +1981,25 @@ export const armPhysicalDiceRerollMotionCapture = async (
           Math.abs(currentLayout.maxY - baselineLayout.maxY),
         );
         const visibleShiftPx = Math.max(screenShiftPx, screenBoundsShiftPx);
-        if (visibleShiftPx < captureOptions.minScreenShiftPx) {
+        const positionShift = Math.hypot(
+          currentMotion.x - baselineMotion.x,
+          currentMotion.y - baselineMotion.y,
+          currentMotion.z - baselineMotion.z,
+        );
+        const rotationShift = Math.max(
+          Math.abs(currentMotion.rotateX - baselineMotion.rotateX),
+          Math.abs(currentMotion.rotateY - baselineMotion.rotateY),
+          Math.abs(currentMotion.rotateZ - baselineMotion.rotateZ),
+        );
+        const motionEvidenceType =
+          visibleShiftPx >= captureOptions.minScreenShiftPx
+            ? "screen-shift"
+            : positionShift >= captureOptions.minPositionShiftPx
+              ? "position-shift"
+              : rotationShift >= captureOptions.minRotationShiftRad
+                ? "rotation-shift"
+                : "";
+        if (!motionEvidenceType) {
           return null;
         }
         const parent = canvas.parentElement;
@@ -1854,9 +2049,12 @@ export const armPhysicalDiceRerollMotionCapture = async (
           screenShiftPx,
           screenBoundsShiftPx,
           visibleShiftPx,
+          positionShift,
+          rotationShift,
+          motionEvidenceType,
         };
       },
-      { key, dieIndex, minScreenShiftPx },
+      { key, dieIndex, minScreenShiftPx, minPositionShiftPx, minRotationShiftRad },
       {
         timeout: options.timeout ?? 7000,
         polling: 16,
@@ -1921,7 +2119,7 @@ export const armPhysicalDiceRerollMotionCapture = async (
         },
       )
       .toBe("visible-reroll-motion");
-    expect(visibleEvidence, "兔脚重投过程截图必须有玩家可见屏幕位移证据").not.toBeNull();
+    expect(visibleEvidence, "兔脚重投过程截图必须有玩家可见的运动或翻转证据").not.toBeNull();
     return visibleEvidence;
   };
 

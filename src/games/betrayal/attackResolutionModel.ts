@@ -17,14 +17,10 @@ import {
     findExplorerByPlayerId,
     getAllExplorers,
 } from './explorerReadModel';
-import type {
-    BetrayalCommand,
-    BetrayalCore,
-    BetrayalEvent,
-} from './game';
-import {
-    resolveHelpingHandsStealableCards,
-} from './hauntAttackRewardReadModel';
+import type { BetrayalCore } from './game';
+import type { BetrayalCommand } from './commandTypes';
+import type { BetrayalEvent } from './events';
+import { resolveHelpingHandsStealableCards } from './hauntAttackRewardReadModel';
 import {
     findFeverishMonster,
     findHelpingHandsTrollHand,

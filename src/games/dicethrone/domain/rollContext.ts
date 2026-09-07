@@ -476,6 +476,12 @@ const isMainRollPhase = (phase: TurnPhase | undefined): boolean => (
     || phase === 'targetingRoll'
 );
 
+const canRecoverLegacyMainRollFromPhase = (phase: TurnPhase | undefined): boolean => (
+    phase === undefined
+    || phase === 'main1'
+    || phase === 'main2'
+);
+
 const getStatePhase = (state: DiceThroneCore): TurnPhase | undefined => {
     const phaseCarrier = state as DiceThroneCore & { turnPhase?: TurnPhase; phase?: TurnPhase };
     return phaseCarrier.turnPhase ?? phaseCarrier.phase;
@@ -523,7 +529,11 @@ export const resolveCurrentRollContext = (
     ) {
         return createBonusRollContextFromSettlement(state, settlement);
     }
-    const legacyPhase = phase ?? inferLegacyMainRollPhase(state);
+    const legacyPhase = isMainRollPhase(phase)
+        ? phase
+        : canRecoverLegacyMainRollFromPhase(phase)
+            ? inferLegacyMainRollPhase(state)
+            : phase;
     if (!isMainRollPhase(legacyPhase)) {
         if (legacyPhase !== undefined || state.currentRollContext) return undefined;
     }

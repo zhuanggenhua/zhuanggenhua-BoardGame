@@ -20,6 +20,7 @@ import { resolveInventoryEffectId } from "./possessionEffects";
 import {
   isBetrayalRoomInLineOfSight,
   resolveConnectedRoomIds,
+  resolveDynamiteTargetRooms,
 } from "./roomMapModel";
 import { rollTrait } from "./traitRollModel";
 
@@ -99,6 +100,29 @@ export interface BetrayalAttackWeaponCardStatus {
   usedThisTurn: boolean;
   availableAtTurnStart: boolean;
   reason: string | null;
+}
+
+export type BetrayalAttackTargetPlayerIds = ReturnType<
+  typeof resolveBetrayalAttackTargetPlayerIds
+>;
+
+export interface BetrayalAttackDeclarationReadModel {
+  attackWeaponCards: BetrayalInventoryCard[];
+  dynamiteAttackWeaponCard: BetrayalInventoryCard | null;
+  selectedAttackWeaponCardId: string | null;
+  selectedAttackWeaponEffectId: string | null;
+  selectedAttackTargetPlayerIds: BetrayalAttackTargetPlayerIds;
+  attackDeclarationTargetPlayerIds: BetrayalAttackTargetPlayerIds;
+  heroAttackTargets: BetrayalExplorerSummary[];
+}
+
+export interface BetrayalAttackTargetingReadModel {
+  heroAttackTargetPlayerIds: ReadonlySet<string>;
+  isHeroAttackTargetingMode: boolean;
+  isDustAttackTargetingMode: boolean;
+  isDynamiteRoomTargetingMode: boolean;
+  isHauntTargetingMode: boolean;
+  dynamiteTargetRoomIds: ReadonlySet<string>;
 }
 
 export function resolveAttackWeaponEffect(
@@ -195,6 +219,70 @@ export function resolveAttackWeaponCardStatuses(
       reason,
     }];
   });
+}
+
+export function resolveBetrayalAttackDeclarationReadModel({
+  core,
+  attackWeaponCardStatuses,
+  selectedAttackWeaponCardId,
+}: {
+  core: BetrayalCore;
+  attackWeaponCardStatuses: readonly BetrayalAttackWeaponCardStatus[];
+  selectedAttackWeaponCardId: string | null;
+}): BetrayalAttackDeclarationReadModel {
+  const attackWeaponCards = attackWeaponCardStatuses
+    .filter((status) => status.canUse)
+    .map((status) => status.card);
+  const dynamiteAttackWeaponCard =
+    attackWeaponCards.find((card) => isDynamiteCardId(card.id)) ?? null;
+  const normalizedAttackWeaponCardId = attackWeaponCards.some(
+    (card) => card.id === selectedAttackWeaponCardId,
+  )
+    ? selectedAttackWeaponCardId
+    : null;
+  const selectedAttackWeaponEffectId = normalizedAttackWeaponCardId
+    ? resolveInventoryEffectId(normalizedAttackWeaponCardId)
+    : null;
+  const selectedAttackTargetPlayerIds = resolveBetrayalAttackTargetPlayerIds(
+    core,
+    normalizedAttackWeaponCardId,
+  );
+  const traitorPlayerIds = new Set<string>();
+  const heroPlayerIds = new Set<string>();
+  const mergeTargets = (targets: BetrayalAttackTargetPlayerIds) => {
+    if (targets.traitorPlayerId) {
+      traitorPlayerIds.add(targets.traitorPlayerId);
+    }
+    targets.heroPlayerIds.forEach((playerId) => heroPlayerIds.add(playerId));
+  };
+
+  mergeTargets(resolveBetrayalAttackTargetPlayerIds(core, null));
+  attackWeaponCards.forEach((card) => {
+    mergeTargets(resolveBetrayalAttackTargetPlayerIds(core, card.id));
+  });
+  const attackDeclarationTargetPlayerIds = {
+    traitorPlayerId: Array.from(traitorPlayerIds)[0] ?? null,
+    heroPlayerIds: Array.from(heroPlayerIds),
+  };
+  const heroAttackTargets =
+    core.phase === "haunt" &&
+    core.scenarioRuntime.traitorPlayerId === core.currentExplorer.playerId
+      ? getAllExplorers(core).filter((explorer) =>
+          attackDeclarationTargetPlayerIds.heroPlayerIds.includes(
+            explorer.playerId,
+          ),
+        )
+      : [];
+
+  return {
+    attackWeaponCards,
+    dynamiteAttackWeaponCard,
+    selectedAttackWeaponCardId: normalizedAttackWeaponCardId,
+    selectedAttackWeaponEffectId,
+    selectedAttackTargetPlayerIds,
+    attackDeclarationTargetPlayerIds,
+    heroAttackTargets,
+  };
 }
 
 export function resolveDefenseExtraDiceWhenAttacked(
@@ -402,6 +490,54 @@ export function resolveBetrayalAttackTargetPlayerIds(
     : [];
 
   return { traitorPlayerId, heroPlayerIds };
+}
+
+export function resolveBetrayalAttackTargetingReadModel({
+  core,
+  selectedAttackWeaponEffectId,
+  hauntTargetingActionKind,
+  hauntActionKind,
+  selectedAttackTargetPlayerIds,
+  hasActiveHauntTargetGuide,
+}: {
+  core: BetrayalCore;
+  selectedAttackWeaponEffectId: string | null;
+  hauntTargetingActionKind: string | null;
+  hauntActionKind: string | null | undefined;
+  selectedAttackTargetPlayerIds: BetrayalAttackTargetPlayerIds;
+  hasActiveHauntTargetGuide: boolean;
+}): BetrayalAttackTargetingReadModel {
+  const heroAttackTargetPlayerIds =
+    core.phase === "haunt" &&
+    core.scenarioRuntime.traitorPlayerId === core.currentExplorer.playerId
+      ? new Set(selectedAttackTargetPlayerIds.heroPlayerIds)
+      : new Set<string>();
+  const isHeroAttackTargetingMode =
+    hauntTargetingActionKind === "attack-hero" &&
+    hauntActionKind === "attack-hero";
+  const isDustAttackTargetingMode =
+    hauntTargetingActionKind === "attack-dust" &&
+    hauntActionKind === "attack-dust";
+  const isDynamiteRoomTargetingMode =
+    selectedAttackWeaponEffectId === "dynamite" &&
+    Boolean(hauntTargetingActionKind?.startsWith("attack-")) &&
+    Boolean(hauntActionKind?.startsWith("attack-"));
+  const dynamiteTargetRooms =
+    selectedAttackWeaponEffectId === "dynamite"
+      ? resolveDynamiteTargetRooms(core)
+      : [];
+
+  return {
+    heroAttackTargetPlayerIds,
+    isHeroAttackTargetingMode,
+    isDustAttackTargetingMode,
+    isDynamiteRoomTargetingMode,
+    isHauntTargetingMode:
+      hasActiveHauntTargetGuide || isDynamiteRoomTargetingMode,
+    dynamiteTargetRoomIds: new Set(
+      dynamiteTargetRooms.map((room) => room.id),
+    ),
+  };
 }
 
 export function formatAttackRangeLabel(

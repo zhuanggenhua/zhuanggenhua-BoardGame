@@ -407,6 +407,130 @@ export function resolveOccupiedRoomMapFloors(
   return ROOM_MAP_FLOOR_ORDER.filter((floor) => occupiedFloors.has(floor));
 }
 
+export type BetrayalBoardRoomMapFloorState = {
+  floors: BetrayalRoomNode["floor"][];
+  upperFloor: BetrayalRoomNode["floor"] | null;
+  lowerFloor: BetrayalRoomNode["floor"] | null;
+  upperFloorHasSelectionTarget: boolean;
+  lowerFloorHasSelectionTarget: boolean;
+  hasCrossFloorSelectionTargets: boolean;
+};
+
+export function resolveBetrayalBoardRoomMapFloorState({
+  occupiedRoomMapFloors,
+  currentExplorerFloor,
+  selectedRoomMapFloor,
+  moveTargetRooms,
+  interactionMode,
+  selectedInventoryUseEffectMode,
+  inventoryTargetRooms,
+  maskTargetRooms,
+  explorableRoomSlots,
+  bloodFromStoneSetupPendingPlayerChoiceCount,
+  bloodFromStoneSetupCandidateRooms,
+  pendingEventTargetRooms,
+  isBloodFromStoneSetupPlacementMode,
+}: {
+  occupiedRoomMapFloors: BetrayalRoomNode["floor"][];
+  currentExplorerFloor: BetrayalRoomNode["floor"];
+  selectedRoomMapFloor: BetrayalRoomNode["floor"];
+  moveTargetRooms: BetrayalRoomNode[];
+  interactionMode: string;
+  selectedInventoryUseEffectMode: string | null;
+  inventoryTargetRooms: BetrayalRoomNode[];
+  maskTargetRooms: BetrayalRoomNode[];
+  explorableRoomSlots: BetrayalRoomNode[];
+  bloodFromStoneSetupPendingPlayerChoiceCount: number;
+  bloodFromStoneSetupCandidateRooms: BetrayalRoomNode[];
+  pendingEventTargetRooms: BetrayalRoomNode[];
+  isBloodFromStoneSetupPlacementMode: boolean;
+}): BetrayalBoardRoomMapFloorState {
+  const floors = new Set<BetrayalRoomNode["floor"]>(occupiedRoomMapFloors);
+  floors.add(currentExplorerFloor);
+  if (moveTargetRooms.length > 0 || interactionMode === "move") {
+    for (const room of moveTargetRooms) {
+      floors.add(room.floor);
+    }
+  }
+  if (selectedInventoryUseEffectMode === "placeExplorer") {
+    for (const room of inventoryTargetRooms) {
+      floors.add(room.floor);
+    }
+  }
+  if (selectedInventoryUseEffectMode === "moveOthersInRoom") {
+    for (const room of maskTargetRooms) {
+      floors.add(room.floor);
+    }
+  }
+  if (interactionMode === "explore") {
+    for (const room of explorableRoomSlots) {
+      floors.add(room.floor);
+    }
+  }
+  if (
+    bloodFromStoneSetupPendingPlayerChoiceCount > 0 ||
+    interactionMode === "bloodFromStoneSetupPlacement"
+  ) {
+    for (const room of bloodFromStoneSetupCandidateRooms) {
+      floors.add(room.floor);
+    }
+  }
+  if (pendingEventTargetRooms.length > 0) {
+    for (const room of pendingEventTargetRooms) {
+      floors.add(room.floor);
+    }
+  }
+
+  const orderedFloors = ROOM_MAP_FLOOR_ORDER.filter((floor) =>
+    floors.has(floor),
+  );
+  const selectedRoomMapFloorIndex = orderedFloors.indexOf(selectedRoomMapFloor);
+  const upperFloor =
+    selectedRoomMapFloorIndex > 0
+      ? orderedFloors[selectedRoomMapFloorIndex - 1]
+      : null;
+  const lowerFloor =
+    selectedRoomMapFloorIndex >= 0 &&
+    selectedRoomMapFloorIndex < orderedFloors.length - 1
+      ? orderedFloors[selectedRoomMapFloorIndex + 1]
+      : null;
+  const targetFloors = new Set<BetrayalRoomNode["floor"]>();
+  if (selectedInventoryUseEffectMode === "placeExplorer") {
+    for (const room of inventoryTargetRooms) {
+      targetFloors.add(room.floor);
+    }
+  }
+  if (selectedInventoryUseEffectMode === "moveOthersInRoom") {
+    for (const room of maskTargetRooms) {
+      targetFloors.add(room.floor);
+    }
+  }
+  for (const room of pendingEventTargetRooms) {
+    targetFloors.add(room.floor);
+  }
+  if (isBloodFromStoneSetupPlacementMode) {
+    for (const room of bloodFromStoneSetupCandidateRooms) {
+      targetFloors.add(room.floor);
+    }
+  }
+
+  const upperFloorHasSelectionTarget = upperFloor
+    ? targetFloors.has(upperFloor)
+    : false;
+  const lowerFloorHasSelectionTarget = lowerFloor
+    ? targetFloors.has(lowerFloor)
+    : false;
+  return {
+    floors: orderedFloors,
+    upperFloor,
+    lowerFloor,
+    upperFloorHasSelectionTarget,
+    lowerFloorHasSelectionTarget,
+    hasCrossFloorSelectionTargets:
+      upperFloorHasSelectionTarget || lowerFloorHasSelectionTarget,
+  };
+}
+
 function resolveFixedLinkTargetRoomId(
   rooms: BetrayalRoomNode[],
   room: BetrayalRoomNode,

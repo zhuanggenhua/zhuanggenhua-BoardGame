@@ -1,5 +1,6 @@
 import { type ComponentProps } from 'react';
-import { GameHUD, resolveGameHudPhase } from '../components/game/framework/widgets/GameHUD';
+import { GameHUD } from '../components/game/framework/widgets/GameHUD';
+import { resolveGameHudPhase } from '../components/game/framework/widgets/gameHudModel';
 import type { MatchSeatSwapConfig } from '../components/game/framework';
 import { type AiSeatController } from '../engine/ai';
 import type { OnlineAiRecoveryEngineConfig } from '../engine/transport/onlineAiRecovery';

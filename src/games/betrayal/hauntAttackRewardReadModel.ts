@@ -51,6 +51,12 @@ export interface BetrayalHelpingHandsTrollHandAttackOption {
     targetPlayerIds: string[];
 }
 
+export interface BetrayalHelpingHandsTrollHandAttackCommandPayload {
+    monsterId?: string;
+    targetPlayerId?: string;
+    combined?: boolean;
+}
+
 export function resolveMummyGirlStealCard(): BetrayalInventoryCard {
     return {
         id: MUMMY_GIRL_STEAL_CARD_ID,
@@ -144,6 +150,18 @@ export function resolveHelpingHandsTrollHandAttackOptions(
         });
     }
     return options.filter((option) => option.targetPlayerIds.length > 0);
+}
+
+export function resolveHelpingHandsTrollHandAttackCommandPayload(
+    option: BetrayalHelpingHandsTrollHandAttackOption,
+    targetPlayerId: string,
+): BetrayalHelpingHandsTrollHandAttackCommandPayload {
+    return {
+        ...(option.combined
+            ? { combined: true }
+            : { monsterId: option.trollHandIds[0] ?? option.id }),
+        targetPlayerId,
+    };
 }
 
 export function resolveHelpingHandsTrollHandMoveCost(

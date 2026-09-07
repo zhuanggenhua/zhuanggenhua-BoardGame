@@ -1,0 +1,100 @@
+{
+  "title": "山屋惊魂教程后续主线 34-52：自然作祟到第一次英雄目标行动",
+  "items": [
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/34-队友一获得指环未触发.jpg",
+      "label": "队友一获得指环，作祟未触发",
+      "transition": "起点：P0 已结束事件回合，队友 1 按正式探索翻出预兆"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/35-队友一结果说明.jpg",
+      "label": "队友一确认公开结果，交给队友二",
+      "transition": "队友 1 看清指环和作祟骰结果，作祟仍未开始"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/36-队友二翻出狗未触发.jpg",
+      "label": "队友二翻出狗，作祟仍未触发",
+      "transition": "队友 2 按正式流程探索预兆房间，公开看到狗和作祟检定"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/37-狗确认后回到当前玩家.jpg",
+      "label": "狗确认后回到当前玩家",
+      "transition": "队友 2 确认公开结果并结束回合，P0 不代操作队友"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/38-当前玩家到达大阶梯准备切层.jpg",
+      "label": "当前玩家到达大阶梯",
+      "transition": "P0 点移动，从厨房经门厅到大阶梯，准备切到上层"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/39-切到上层看见上层平台.jpg",
+      "label": "切到上层看见上层平台",
+      "transition": "P0 点击楼层上箭头，看到下一步可移动到上层平台"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/40-当前玩家移动到上层平台.jpg",
+      "label": "当前玩家移动到上层平台",
+      "transition": "P0 点击上层平台，移动到图书馆旁边"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/41-当前玩家在上层平台准备结束回合.jpg",
+      "label": "在上层平台结束回合前",
+      "transition": "图书馆已可见但目标尚未出现，P0 先按正常回合结束"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/42-队友一翻出面具触发作祟.jpg",
+      "label": "队友一翻出面具触发作祟",
+      "transition": "P0 结束回合后，队友 1 继续正式探索并自然触发木乃伊作祟"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/43-英雄开场过场.jpg",
+      "label": "英雄开场过场，不是剧本书页",
+      "transition": "触发者确认公开作祟结果后，P0 以英雄身份先看到一次性开场过场"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/44-过场继续进入英雄剧本书.jpg",
+      "label": "过场结束，按钮进入英雄剧本书",
+      "transition": "开场过场仍在场，底部按钮明确写进入剧本书，下一帧才是书本正文"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/45-英雄剧本书目标页说明图书馆原因.jpg",
+      "label": "英雄剧本书目标页说明图书馆原因",
+      "transition": "点击进入剧本书后，规则正文写明图书馆可研究历史找真名"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/46-读完目标关闭剧本书.jpg",
+      "label": "读完目标后关闭剧本书",
+      "transition": "目标页已说明找真名、学法术和驱逐，下一步关闭回牌桌"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/47-读完目标回到上层平台英雄回合.jpg",
+      "label": "回到上层平台的英雄回合",
+      "transition": "队友 2 按正式流程结束，回合交回仍在上层平台的 P0"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/48-读完目标后准备打开移动目标.jpg",
+      "label": "准备打开移动目标",
+      "transition": "P0 已读到图书馆目标，下一真实输入是点击移动"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/49-图书馆成为可点击移动目标.jpg",
+      "label": "图书馆成为可点击移动目标",
+      "transition": "P0 点击移动后，图书馆作为相邻房间出现在候选目标中"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/50-英雄寻找木乃伊真名入口.jpg",
+      "label": "移动进图书馆后出现找真名入口",
+      "transition": "P0 点击图书馆完成移动，正式作祟行动寻找木乃伊真名出现"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/51-寻找真名知识检定成功.jpg",
+      "label": "寻找真名知识检定成功",
+      "transition": "P0 点击找真名，知识检定成功并取得第 1 枚知识标记"
+    },
+    {
+      "path": "evidence/betrayal-tutorial/main-flow-rebuilt/52-确认后回到牌桌可结束回合.jpg",
+      "label": "确认后回到牌桌可结束回合",
+      "transition": "确认投骰结果后，结果层关闭并回到结束回合入口"
+    }
+  ]
+}

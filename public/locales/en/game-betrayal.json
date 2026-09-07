@@ -539,6 +539,7 @@
       "readerPrev": "Previous",
       "readerNext": "Next",
       "readerContinue": "Continue",
+      "readerEnterBook": "Enter Scenario Book",
       "cinematicTerminalPrologue": "Prologue",
       "cinematicTerminalEnd": "The End",
       "reader": {
@@ -601,9 +602,9 @@
         "reader": {
           "prologueLabel": "Public Reveal",
           "prologue": "Dry scraping comes from the sarcophagus. The mummy wakes, turns toward the Girl, and every step through the house starts to feel like a march toward a wedding that should never happen.",
-          "prologueHeroesLabel": "Hero Opening",
+          "prologueHeroesLabel": "Hero Opening Cutscene",
           "prologueHeroes": "Dust suddenly swirls through the room, and a shadow of dread crosses your mind. Not far away, you hear a friend's cry, mixed with fear and a trace of excitement. A strange, deep voice echoes in your head: \"My beloved was lost in the ancient flood. Though my tears have turned to ash, love still burns in my heart like the sun. Now my love has returned. We shall never be parted! Anyone who stops me will die, body and soul!\"",
-          "prologueTraitorLabel": "Traitor Opening",
+          "prologueTraitorLabel": "Traitor Opening Cutscene",
           "prologueTraitor": "There is a crack in the wall. When you touch it, the wall slides aside, revealing a dusty sarcophagus covered in strange designs. The markings on the sarcophagus glow faintly, and you cannot help studying what must be ancient Egyptian hieroglyphs.\n\nA strange, deep voice flashes through your mind: \"My beloved was lost in the ancient flood. Though my tears have turned to ash, love still burns in my heart like the sun. Now my love has returned. We shall never be parted! You will not stop our union!\" Your mind goes blank. You know only that, to let true lovers be together, sacrificing your friends is worthwhile. The sarcophagus slowly opens, and you gaze devoutly upon your master.",
           "setupLabel": "Opening Record",
           "setup": "Your character has become the traitor but continues playing.\n\nTake the large Mummy monster token and a pentagonal item token, which represents the sarcophagus, and place them in your room.\n\nYou immediately lose the Girl companion. Discard the Girl omen and lose its effect. Set the Girl omen aside, take a magenta token to represent the Girl, and place it in another room on the same floor as the Mummy. The Girl and Mummy must be at least 5 rooms apart. If the floor is too small for that, place the Girl token in the room farthest from the Mummy.",
@@ -1065,12 +1066,25 @@
   },
   "tutorial": {
     "mainPath": {
-      "title": "Main Tutorial: Core Turn",
-      "description": "Start before the haunt and naturally move through one core turn: movement, same-room trading, exploration, event resolution, Book use, Rabbit's Foot reroll, and damage allocation."
+      "title": "Main Tutorial: Core Turn to First Hero Goal Action",
+      "description": "Start before the haunt and move naturally through one core turn: movement, exploration, event resolution, Book use, Rabbit's Foot reroll, damage allocation, a natural haunt reveal, and the first hero goal action.",
+      "steps": {
+        "endTurnAfterEvent": "After damage allocation, discovering the Event room has already ended your turn. Choose End Turn to pass play to your teammate.",
+        "watchTeammateOneOmenTurn": "It is not your turn now. Teammate 1 first moves back beside the Entrance Hall, explores a ground-floor Omen room, and reveals the Ring; this haunt roll does not trigger.",
+        "teammateOneOmenResults": "Teammate 1 gains the Ring, and the haunt has not started. Play passes to teammate 2.",
+        "watchTeammateTwoOmenTurn": "Teammate 2 moves into the newly discovered ground-floor room, explores an adjacent Omen room, and reveals Dog; this haunt roll still does not trigger.",
+        "teammateTwoOmenResults": "After Dog is confirmed, play returns to you. You are still in the Kitchen; this turn, move to the Upper Landing beside the Library, then wait for the haunt goal before entering it.",
+        "moveToGrandStaircase": "You already know movement. Stay in move mode and move from the Kitchen through the Hallway to the Grand Staircase; it connects the floors.",
+        "switchToUpperFloor": "At the Grand Staircase, the floor switcher shows an upper-floor move target. Choose the up arrow to switch the map to the upper floor and reveal the Upper Landing.",
+        "moveToUpperLanding": "The Upper Landing is now visible. Choose it to move beside the Library; this step only completes the movement you can legally make this turn.",
+        "endTurnFromUpperLanding": "You are on the Upper Landing, with the Library to the west. Do not continue exploring this turn; choose End Turn so your teammate can keep exploring until an Omen roll naturally starts the haunt.",
+        "watchTeammateHauntTrigger": "Teammate 1 explores from the new ground-floor room and reveals the Mask. This Omen roll reaches 5+, so the haunt starts naturally.",
+        "teammateConfirmHauntTrigger": "Teammate 1 reads the Mask and haunt roll result, confirms it, and the game moves into the haunt."
+      }
     },
     "basicSetup": {
-      "title": "Core Turn: Move, Trade, Explore, Use",
-      "description": "Before the haunt begins, you may move, discover a new room, trade Items and Omens with an explorer in the same room, and take special actions in any order. Discovering a new room ends your turn.",
+      "title": "Core Turn: Move, Explore, Use",
+      "description": "Before the haunt begins, you may move, discover a new room, and take special Item or Omen actions in any order. Discovering a new room ends your turn; trade is taught in its own topic.",
       "steps": {
         "setupRuntime": "Before the haunt begins, learn one core turn: move to a room, discover a new room, reveal a discovery card, and see how the turn closes.",
         "objectiveAndTurn": "It is your turn. Start with Move: moving changes your room and decides which unexplored doorway you can use next.",
@@ -1093,7 +1107,8 @@
         "rollEvent": "The Event card is public. Click Roll Event to make the Might check on this card; the dice and event result stay on the table for every player to read.",
         "useRabbitFoot": "The Book changed the check to Knowledge. Now click Rabbit's Foot, choose one die to reroll, then click Confirm Rabbit's Foot.",
         "rabbitFootResult": "Rabbit's Foot has finished the reroll. The Event card and dice were already visible during this public roll; when there is no new choice, the game moves into damage allocation.",
-        "finish": "Choose the trait that takes 1 physical damage, then confirm the allocation."
+        "finish": "Choose the trait that takes 1 physical damage, then confirm the allocation.",
+        "returnToTableAfterDamage": "The damage is now applied to the trait track. Choose Return to Table to go back to your action entry."
       }
     },
     "omenConfirmation": {
@@ -1110,7 +1125,7 @@
       "title": "Natural Haunt Trigger: Omen to First Hero Action",
       "description": "Continue through normal turns: control only your own turn, let teammate turns advance as public results, read the Hero Scenario Book when a teammate reveals the haunt, then complete the first hero objective action: finding the Mummy's true name.",
       "steps": {
-        "setupNaturalHauntFlow": "This section teaches the majority hero perspective: you end your turn in the Library and control only your own turn, while teammates gain Omens through normal turns. The traitor book has its own chapter.",
+        "setupNaturalHauntFlow": "This section teaches the majority hero perspective: you end your turn beside the Library and control only your own turn, while teammates gain Omens through normal turns. The traitor book has its own chapter.",
         "handOffToTeammateOne": "Choose End Turn to pass play to the next explorer. Haunt risk rises as players actually gain Omens.",
         "watchTeammateOmenTurns": "It is not your turn now. Wait while teammate 1 explores an Omen room; this only reveals the first Omen and a failed haunt roll.",
         "teammateOmenResults": "Teammate 1 gains the Ring, and one haunt die stays below 5+. Play now passes normally to teammate 2.",
@@ -1119,11 +1134,13 @@
         "handOffToTeammateSecondCycle": "It is your turn again. Choose End Turn to keep watching teammates explore through the normal rules; you are not acting for them.",
         "watchTeammateHauntTrigger": "Teammate 1 explores south from the Observatory, reveals another Omen room, and gains the Mask. The third Omen rolls three haunt dice.",
         "teammateConfirmHauntTrigger": "Teammate 1 reads the Mask and the three haunt dice, then confirms after seeing the public result.",
-        "heroReaderOpened": "After the public haunt reveal, teammate 1 is the revealer and becomes the traitor. You are still a hero, so the Hero Scenario Book opens; read the opening page first.",
-        "heroReaderTurnPage": "This is the opening page. Use Continue/Next Page at the bottom of the book to turn to page 2, the hero goal page; that page explains finding the true name, learning the spell, and banishing the Mummy.",
-        "heroReaderGoal": "Page 2 says the hero can find the true name in the Sarcophagus room, Study, or Library. You are in the Library now, so your first objective action is Find the Mummy's True Name.",
-        "heroReaderClose": "After reading page 2, close the book and return to the table; the next hero turn follows this goal.",
-        "waitForHeroTurnAfterHaunt": "After the haunt begins, turn order continues. Teammate 2 ends their turn through the normal flow, then play returns to you; you are still in the Library, matching the hero goal: Library (research the Mummy's history).",
+        "heroReaderOpened": "After the public haunt reveal, teammate 1 is the revealer and becomes the traitor. You are still a hero; the game first shows the hero opening cutscene, not the goal page of the Scenario Book. Read this one-time opening.",
+        "heroReaderTurnPage": "After the opening cutscene, choose Enter Scenario Book to open the Hero Scenario Book goal page; that page explains finding the true name, learning the spell, and banishing the Mummy.",
+        "heroReaderGoal": "The Hero Scenario Book goal page says the hero can find the true name in the Sarcophagus room, Study, or Library. You are beside the Library now, so after reading you should move into it.",
+        "heroReaderClose": "After reading the Hero Scenario Book goal page, close it and return to the table; the next hero turn follows this goal.",
+        "waitForHeroTurnAfterHaunt": "After the haunt begins, turn order continues. Teammate 2 ends their turn through the normal flow, then play returns to you; you are still on the Upper Landing, and the goal just told you the Library can research the Mummy's history.",
+        "openLibraryMoveAfterGoal": "You have read the hero goal and know why the Library matters. Choose Move first to show the rooms reachable from the Upper Landing.",
+        "moveToLibraryAfterGoal": "The Library is now an adjacent move target. Choose the Library to move into it; only then can you find the Mummy's true name.",
         "heroStudyNameRoll": "The hero goal allows a 6+ Knowledge check in the Sarcophagus room, Study, or Library to find the true name. You are in the Library, so choose Find the Mummy's True Name; success gains the first knowledge token.",
         "heroStudyNameResult": "The check succeeds: the heroes gain the first knowledge token and record the true name. After reading the roll result, press Confirm to return to the table.",
         "heroStudyNameCloseout": "The result has landed on the hero objective progress. Each hero can attempt only one haunt objective step per turn; end this turn first, then learn the banishment spell on a later legal turn with the Book."

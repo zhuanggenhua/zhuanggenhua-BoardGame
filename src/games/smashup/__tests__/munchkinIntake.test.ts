@@ -256,10 +256,17 @@ describe('SmashUp Munchkin intake 静态合同', () => {
         for (const fixture of MUNCHKIN_FIXTURES) {
             expect(visible.has(fixture.factionId)).toBe(true);
         }
-        expect(isFactionImplementationInProgress(SMASHUP_FACTION_IDS.MUNCHKIN_DWARVES)).toBe(false);
+        const configuredFactions = new Set([
+            SMASHUP_FACTION_IDS.MUNCHKIN_DWARVES,
+            SMASHUP_FACTION_IDS.MUNCHKIN_ELVES,
+            SMASHUP_FACTION_IDS.MUNCHKIN_CLERICS,
+        ]);
+        for (const factionId of configuredFactions) {
+            expect(isFactionImplementationInProgress(factionId)).toBe(false);
+        }
 
         for (const fixture of MUNCHKIN_FIXTURES.filter(fixture =>
-            fixture.factionId !== SMASHUP_FACTION_IDS.MUNCHKIN_DWARVES
+            !configuredFactions.has(fixture.factionId)
         )) {
             expect(isFactionImplementationInProgress(fixture.factionId)).toBe(true);
         }

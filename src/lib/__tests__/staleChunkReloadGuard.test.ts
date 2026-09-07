@@ -13,6 +13,9 @@ describe('staleChunkReloadGuard', () => {
         expect(isStaleChunkError('Importing a module script failed')).toBe(true);
         expect(isStaleChunkError(new Error('Expected a JavaScript module script but the server responded with text/html'))).toBe(true);
         expect(isStaleChunkError(new Error("'text/html' is not a valid JavaScript MIME type."))).toBe(true);
+        const reactLazyDefaultError = new TypeError("Cannot read properties of undefined (reading 'default')");
+        reactLazyDefaultError.stack = "TypeError: Cannot read properties of undefined (reading 'default')\n    at w (https://easyboardgame.top/assets/vendor-react-BClYuNVW.js:1:4646)";
+        expect(isStaleChunkError(reactLazyDefaultError)).toBe(true);
         expect(() => requireLazyModuleExport<{ default: unknown }, 'default'>(undefined, 'default', './splendor/Board')).toThrow('[stale-lazy-module]');
         try {
             requireLazyModuleExport<{ default: unknown }, 'default'>(undefined, 'default', './splendor/Board');
@@ -20,6 +23,7 @@ describe('staleChunkReloadGuard', () => {
             expect(isStaleChunkError(error)).toBe(true);
         }
         expect(isStaleChunkError(new Error('Network request failed'))).toBe(false);
+        expect(isStaleChunkError(new TypeError("Cannot read properties of undefined (reading 'default')"))).toBe(false);
     });
 
     it('reloads once per reason and location and records the guard key before reload', () => {

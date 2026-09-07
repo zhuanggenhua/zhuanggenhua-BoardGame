@@ -7,7 +7,10 @@ import type {
   BetrayalExplorerSummary,
   BetrayalMonsterStatusKind,
   BetrayalMonsterSummary,
+  BetrayalTraitKey,
 } from "./game";
+import type { BetrayalAttackImpactState } from "./attackImpactPresentation";
+import { BetrayalAttackImpactSurface } from "./attackImpactSurface";
 import { formatMonsterTraitSummary } from "./entityPresentation";
 import type { BetrayalHauntTokenInstanceSummary } from "./hauntTokenModel";
 import { resolvePlayerName } from "./playerPresentation";
@@ -92,12 +95,8 @@ type RoomEntityLayerSurfaceProps = {
     monsterId: string,
     playerId: string,
   ) => EntityRelation | undefined;
-  renderAttackImpactSurface: (
-    playerId: string,
-    surface: string,
-    children: React.ReactNode,
-    density?: "token" | "panel",
-  ) => React.ReactNode;
+  attackImpactPresentationKey: string | null;
+  attackImpactByPlayerId: ReadonlyMap<string, BetrayalAttackImpactState>;
   onSelectExplorerTarget: (explorer: BetrayalExplorerSummary) => void;
   onOpenExplorerDetails: (playerId: string) => void;
   onSelectMonsterTarget: (monsterId: string) => void;
@@ -176,7 +175,8 @@ export function BetrayalRoomEntityLayerSurface({
   locale,
   matchData,
   resolveMonsterRelationToExplorer,
-  renderAttackImpactSurface,
+  attackImpactPresentationKey,
+  attackImpactByPlayerId,
   onSelectExplorerTarget,
   onOpenExplorerDetails,
   onSelectMonsterTarget,
@@ -196,6 +196,40 @@ export function BetrayalRoomEntityLayerSurface({
     selectedMonsterAttackSourceId && selectedMonsterAttackTargetPlayerIds.size > 0
       ? (Array.from(selectedMonsterAttackTargetPlayerIds)[0] ?? null)
       : null;
+  const resolveTraitLabel = React.useCallback(
+    (trait: BetrayalTraitKey) => t(`board.traits.${trait}`),
+    [t],
+  );
+  const renderAttackImpactSurface = React.useCallback(
+    (
+      playerId: string,
+      surface: string,
+      children: React.ReactNode,
+      density: "token" | "panel" = "token",
+    ) => {
+      if (!attackImpactPresentationKey) {
+        return children;
+      }
+      const impact = attackImpactByPlayerId.get(playerId);
+      if (!impact) {
+        return children;
+      }
+      const presentationKey = `${attackImpactPresentationKey}:${surface}:${playerId}`;
+      return (
+        <BetrayalAttackImpactSurface
+          key={presentationKey}
+          impact={impact}
+          presentationKey={presentationKey}
+          surface={surface}
+          density={density}
+          traitLabel={resolveTraitLabel}
+        >
+          {children}
+        </BetrayalAttackImpactSurface>
+      );
+    },
+    [attackImpactByPlayerId, attackImpactPresentationKey, resolveTraitLabel],
+  );
 
   return (
     <div

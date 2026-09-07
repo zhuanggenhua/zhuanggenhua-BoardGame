@@ -2,11 +2,11 @@ import { expect, test, type Locator, type Page } from '@playwright/test';
 import { existsSync, readdirSync, unlinkSync } from 'node:fs';
 import sharp from 'sharp';
 import {
-    BETRAYAL_COMMANDS,
     resolveExplorableRoomSlots,
     resolveNextRoomDiscoveryDeckKind,
     type BetrayalCore,
 } from '../../src/games/betrayal/game';
+import { BETRAYAL_COMMANDS } from '../../src/games/betrayal/commands';
 import {
     resolveBetrayalMonsterMoveTargetRooms,
     resolveBetrayalMonsterMovementGroups,

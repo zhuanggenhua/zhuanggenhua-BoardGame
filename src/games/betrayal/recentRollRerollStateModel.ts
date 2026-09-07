@@ -57,11 +57,11 @@ import type {
     BetrayalCore,
     BetrayalDiscoverySummary,
     BetrayalEndgameResult,
-    BetrayalEvent,
     BetrayalExplorerSummary,
     BetrayalPendingDamageAllocationState,
     BetrayalRecentRollState,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type RabbitFootUsedEvent = Extract<BetrayalEvent, { type: 'RABBIT_FOOT_USED' }>;
 

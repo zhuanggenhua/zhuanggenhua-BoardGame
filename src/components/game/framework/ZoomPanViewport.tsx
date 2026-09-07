@@ -168,6 +168,7 @@ export const ZoomPanViewport = forwardRef<HTMLDivElement, ZoomPanViewportProps>(
     const suppressNextClickRef = useRef(false);
     const suppressClickResetTimerRef = useRef<number | null>(null);
     const handledPanInstructionRef = useRef<string | null>(null);
+    const [settledPanInstructionKey, setSettledPanInstructionKey] = useState<string | null>(null);
 
     const [zoomLevel, setZoomLevel] = useState(initialScale);
     const [position, setPosition] = useState({ x: 0, y: 0 });
@@ -232,6 +233,12 @@ export const ZoomPanViewport = forwardRef<HTMLDivElement, ZoomPanViewportProps>(
     const shouldShowScaleBadge = scaleBadgeVisibility === 'interaction'
         ? isScaleBadgeVisible
         : isScaleBadgeVisible || !isAtDefaultZoom || scaleBadgeAddon != null;
+    const panInstructionKey = panToTarget ? `${panToTarget}:${panToScale ?? 'current'}` : null;
+    const panTargetState = panToTarget
+        ? settledPanInstructionKey === panInstructionKey && !isAnimating
+            ? 'settled'
+            : 'panning'
+        : undefined;
 
     const clearScaleBadgeTimer = useCallback(() => {
         if (scaleBadgeTimerRef.current !== null) {
@@ -679,7 +686,6 @@ export const ZoomPanViewport = forwardRef<HTMLDivElement, ZoomPanViewportProps>(
         if (!contentRef.current || !containerRef.current) return undefined;
         if (!containerSize.width || !containerSize.height || !contentSize.width || !contentSize.height) return undefined;
 
-        const panInstructionKey = `${panToTarget}:${panToScale ?? 'current'}`;
         if (handledPanInstructionRef.current === panInstructionKey) return undefined;
 
         const rafId = requestAnimationFrame(() => {
@@ -758,6 +764,7 @@ export const ZoomPanViewport = forwardRef<HTMLDivElement, ZoomPanViewportProps>(
             applyViewport(nextViewport);
             animationTimerRef.current = window.setTimeout(() => {
                 setIsAnimating(false);
+                setSettledPanInstructionKey(panInstructionKey);
                 animationTimerRef.current = null;
             }, 400);
         });
@@ -777,6 +784,7 @@ export const ZoomPanViewport = forwardRef<HTMLDivElement, ZoomPanViewportProps>(
         fitCenterOffset.x,
         fitCenterOffset.y,
         panBoundsMode,
+        panInstructionKey,
         panToScale,
         panToTarget,
         revealScaleBadge,
@@ -822,6 +830,9 @@ export const ZoomPanViewport = forwardRef<HTMLDivElement, ZoomPanViewportProps>(
             onDragStart={(event) => event.preventDefault()}
             aria-label={ariaLabel ?? containerProps?.['aria-label']}
             data-testid={containerTestId ?? containerProps?.['data-testid']}
+            data-zoom-pan-active-target={panToTarget ?? undefined}
+            data-zoom-pan-target-state={panTargetState}
+            data-zoom-pan-target-settled={panTargetState === 'settled' ? 'true' : undefined}
             style={{
                 ...containerProps?.style,
                 ...style,

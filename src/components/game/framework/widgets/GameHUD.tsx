@@ -24,8 +24,8 @@ import {
 } from 'lucide-react';
 import { useNavigate } from 'react-router-dom';
 import { useUndo, useUndoStatus } from '../../../../contexts/UndoContext';
-import { UI_Z_INDEX, HudPortal } from '../../../../core';
-import { FabMenu, type FabAction } from '../../../system/FabMenu';
+import { HudPortal } from '../../../../core';
+import { FabMenu, type FabAction, type FabMenuPosition } from '../../../system/FabMenu';
 import { UNDO_COMMANDS } from '../../../../engine';
 import { AudioControlSection } from './AudioControlSection';
 import { AboutModal } from '../../../system/AboutModal';
@@ -33,7 +33,7 @@ import { FeedbackModal } from '../../../system/FeedbackModal';
 import { useToast } from '../../../../contexts/ToastContext';
 import { useAuth } from '../../../../contexts/AuthContext';
 import { matchSocket, type MatchChatMessage, type MatchEmoteEvent } from '../../../../services/matchSocket';
-import { MAX_CHAT_LENGTH, MAX_CHAT_MESSAGES } from '../../../../shared/chat';
+import { MAX_CHAT_LENGTH } from '../../../../shared/chat';
 import type { EmoteDefinition } from '../../../../shared/emotes';
 import { useModalStack } from '../../../../contexts/ModalStackContext';
 import { FriendsChatModal } from '../../../social/FriendsChatModal';
@@ -52,10 +52,6 @@ import { OptimizedImage } from '../../../common/media/OptimizedImage';
 import { EmotePicker } from './EmotePicker';
 import { SeatEmoteOverlay } from './SeatEmoteOverlay';
 import type { GameOrientationPreference } from '../../../../shared/gameManifest.types';
-import {
-    buildGameFeedbackActionLog,
-    buildGameFeedbackStateSnapshot,
-} from '../../../../lib/feedback/gameFeedbackDiagnostics';
 import { toggleDocumentFullscreen } from '../../../../lib/webFullscreen';
 import {
     applySystemDisplayThemeToDocument,
@@ -64,6 +60,16 @@ import {
     subscribeSystemDisplayThemeChange,
     type SystemDisplayTheme,
 } from '../../../system/systemDisplayTheme';
+import {
+    buildGameHudFeedbackActionLog,
+    buildGameHudFeedbackStateSnapshot,
+    GAME_HUD_FAB_Z_INDEX,
+    getLatestIncomingMessage,
+    isSelfChatMessage,
+    resolveGameHudPhase,
+    trimChatMessages,
+    type HudPhaseStateLike,
+} from './gameHudModel';
 
 interface GameHUDProps {
     mode: 'local' | 'online' | 'tutorial' | 'test';
@@ -104,56 +110,9 @@ interface GameHUDProps {
 
 const EMPTY_EMOTES: readonly EmoteDefinition[] = [];
 
-type HudPhaseStateLike = {
-    sys?: {
-        phase?: unknown;
-        flow?: {
-            phase?: unknown;
-        };
-    };
-};
-
-export const resolveGameHudPhase = (state?: HudPhaseStateLike | null) => {
-    const phase = state?.sys?.phase ?? state?.sys?.flow?.phase;
-    return typeof phase === 'string' ? phase : null;
-};
-
-// 判断消息是否来自自己
-export const isSelfChatMessage = (
-    message: MatchChatMessage,
-    myPlayerId?: string | null,
-    myDisplayName?: string
-) => {
-    return message.senderId != null
-        ? String(message.senderId) === String(myPlayerId ?? '')
-        : message.senderName === myDisplayName;
-};
-
-// 获取最近一条非自身消息（用于未读预览）
-export const getLatestIncomingMessage = (
-    messages: MatchChatMessage[],
-    myPlayerId?: string | null,
-    myDisplayName?: string
-) => {
-    for (let i = messages.length - 1; i >= 0; i -= 1) {
-        const message = messages[i];
-        if (!isSelfChatMessage(message, myPlayerId, myDisplayName)) return message;
-    }
-    return null;
-};
-
-export const trimChatMessages = (
-    messages: MatchChatMessage[],
-    maxMessages = MAX_CHAT_MESSAGES
-) => {
-    if (messages.length <= maxMessages) return messages;
-    return messages.slice(messages.length - maxMessages);
-};
-
-export const buildGameHudFeedbackActionLog = buildGameFeedbackActionLog;
-export const buildGameHudFeedbackStateSnapshot = buildGameFeedbackStateSnapshot;
-
-export const GAME_HUD_FAB_Z_INDEX = UI_Z_INDEX.emergencyHud;
+const MAGE_WARS_GAME_HUD_FAB_POSITION: FabMenuPosition = 'top-left';
+const MAGE_WARS_GAME_HUD_FAB_STORAGE_KEY = 'game_hud_fab_position:mage-wars';
+const MAGE_WARS_GAME_HUD_FAB_LEGACY_OFFSET_STORAGE_KEY = 'game_hud_fab_offset:mage-wars';
 
 export const GameHUD = ({
     mode,
@@ -191,6 +150,15 @@ export const GameHUD = ({
     const { t, i18n } = useTranslation('game');
     const toast = useToast();
     const { user } = useAuth();
+    const fabMenuPosition: FabMenuPosition = _gameId === 'mage-wars'
+        ? MAGE_WARS_GAME_HUD_FAB_POSITION
+        : 'bottom-right';
+    const fabMenuStorageKey = _gameId === 'mage-wars'
+        ? MAGE_WARS_GAME_HUD_FAB_STORAGE_KEY
+        : undefined;
+    const fabMenuLegacyOffsetStorageKey = _gameId === 'mage-wars'
+        ? MAGE_WARS_GAME_HUD_FAB_LEGACY_OFFSET_STORAGE_KEY
+        : undefined;
 
     // 从注册表获取游戏特定的卡牌预览函数
     const getCardPreviewRef = useMemo(() => {
@@ -1220,8 +1188,10 @@ export const GameHUD = ({
             <FabMenu
                 isDark={true}
                 items={items}
-                position="bottom-right"
+                position={fabMenuPosition}
                 zIndex={GAME_HUD_FAB_Z_INDEX}
+                storageKey={fabMenuStorageKey}
+                legacyOffsetStorageKey={fabMenuLegacyOffsetStorageKey}
             />
 
             {showAbout && <AboutModal onClose={() => setShowAbout(false)} />}
@@ -1237,12 +1207,12 @@ export const GameHUD = ({
                     actionLogText={(() => {
                         const G = undoState?.G;
                         if (!G) return undefined;
-                        return buildGameFeedbackActionLog(G, actionLogRows);
+                        return buildGameHudFeedbackActionLog(G, actionLogRows);
                     })()}
                     stateSnapshot={(() => {
                         const G = undoState?.G;
                         if (!G) return undefined;
-                        return buildGameFeedbackStateSnapshot(G);
+                        return buildGameHudFeedbackStateSnapshot(G);
                     })()}
                 />
             )}

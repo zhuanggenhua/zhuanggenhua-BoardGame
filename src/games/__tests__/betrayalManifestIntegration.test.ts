@@ -50,6 +50,7 @@ describe('betrayal manifest integration', () => {
         expect(Object.keys(implementation?.tutorialCatalog?.tutorials ?? {})).toEqual([
             'basic-setup-and-turn',
             'omen-confirmation-and-haunt-risk',
+            'haunt-natural-trigger-flow',
             'trade-and-agreement',
             'move-explore-use',
             'crimson-jack-objective',
@@ -57,6 +58,7 @@ describe('betrayal manifest integration', () => {
             'hero-attack-path',
             'jack-spirit-path',
             'traitor-path',
+            'mummy-traitor-victory-chain',
             'mummy-monster-actions',
         ]);
         expect(Object.entries(implementation?.tutorialCatalog?.tutorials ?? {})
@@ -70,11 +72,15 @@ describe('betrayal manifest integration', () => {
         );
         expect(resolveGameTutorialManifest('betrayal', 'omen-confirmation-and-haunt-risk')?.id)
             .toBe('omen-confirmation-and-haunt-risk');
+        expect(resolveGameTutorialManifest('betrayal', 'haunt-natural-trigger-flow')?.id)
+            .toBe('haunt-natural-trigger-flow');
         expect(resolveGameTutorialManifest('betrayal', 'trade-and-agreement')?.id).toBe('trade-and-agreement');
         expect(resolveGameTutorialManifest('betrayal', 'move-explore-use')?.id).toBe('basic-setup-and-turn');
         expect(resolveGameTutorialManifest('betrayal', 'crimson-jack-objective')?.id).toBe('haunt-actions-and-finish');
         expect(resolveGameTutorialManifest('betrayal', 'haunt-actions-and-finish')?.id).toBe('haunt-actions-and-finish');
         expect(resolveGameTutorialManifest('betrayal', 'jack-spirit-path')?.id).toBe('jack-spirit-path');
+        expect(resolveGameTutorialManifest('betrayal', 'mummy-traitor-victory-chain')?.id)
+            .toBe('mummy-traitor-victory-chain');
         expect(resolveGameTutorialManifest('betrayal', 'mummy-monster-actions')?.id).toBe('mummy-monster-actions');
     });
 });

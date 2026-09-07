@@ -40,6 +40,7 @@ let mockOnlineAiSeatControllers: Record<string, { type: 'human' | 'local-ai' | '
 let mockNow = 1_000_000;
 
 vi.mock('react-i18next', () => ({
+    initReactI18next: { type: '3rdParty', init: vi.fn() },
     useTranslation: () => ({
         t: (key: string) => key,
         i18n: { resolvedLanguage: 'zh-CN', language: 'zh-CN' },

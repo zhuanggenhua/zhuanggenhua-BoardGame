@@ -26,8 +26,8 @@ src/games/<gameId>/
 职责：
 
 - `manifest.ts`：清单元数据；`id` 必须与目录名一致，缩略图路径使用逻辑资源路径。
-- `game.ts`：组装领域内核和引擎系统；`commandTypes` 只列业务命令，系统命令由引擎适配层合并。
-- `Board.tsx`：设计门通过后的正式玩家 UI 入口；超过约 `300` 行或出现多职责区域时拆入 `ui/`。设计门通过前不得用占位 Board 冒充骨架完成。
+- `game.ts`：组装领域内核和引擎系统；`commandTypes` 只列业务命令，系统命令由引擎适配层合并。不得承载规则事实、命令校验、事件生成、状态 reducer、读模型或测试夹具正文。
+- `Board.tsx`：设计门通过后的正式玩家 UI 入口；只做页面组合、React 状态绑定、handler wiring 和子 UI 挂载。超过约 `1,000` 行时先做体量审查；出现多职责区域且未通过白名单裁决时拆入 `ui/`、read model 或 controller hook。设计门通过前不得用占位 Board 冒充骨架完成。
 - `thumbnail.tsx`：缩略图组件；优先使用项目统一 thumbnail 组件，不自写资源 URL。
 - `tutorial.ts`、`audio.config.ts`：可先占位，但最终完成前必须按教程和音频规范裁定。
 - `domain/`：规则状态、命令、事件、校验、执行、reducer、流程钩子和共享工具。
@@ -53,8 +53,9 @@ src/games/<gameId>/
 拆分门槛：
 
 - 命令数或事件数达到中等复杂度时，第一天就把 `types.ts` 拆成 barrel + `core-types.ts` / `commands.ts` / `events.ts`。
-- `execute.ts` 或 `reducer.ts` 接近约 `600` 行、命令 / 事件超过约 `15` 个，按实体或命令类别拆到子目录。
-- `game.ts` 超过约 `500` 行时，提取 `flowHooks`、`cheatModifier` 或系统配置；不要让 adapter 承担规则实现。
+- `execute.ts` 或 `reducer.ts` 接近约 `1,000` 行、命令 / 事件超过约 `15` 个，按实体或命令类别拆到子目录。
+- `game.ts` 超过约 `1,000` 行、出现大型 `switch` 或同时承担 validate / execute / reduce 时，必须拆到 `domain/` 或行为 owner；只有 owner 表证明它仍是单一入口组装职责时，才允许白名单放行；不要让 adapter 承担规则实现。
+- `Board.tsx` 超过约 `1,000` 行时先做体量审查；同时出现动作列表、派生读模型、Surface JSX、教程 / 动画状态和调试面板且未通过白名单裁决时，必须先拆 Surface、read model、controller hook 或 action model，再继续追加功能。
 - UI 子模块只承担显示和玩家动作承接；规则合法性、资源消耗、随机和胜负判断不得放进 UI。
 
 ## 引擎组装边界

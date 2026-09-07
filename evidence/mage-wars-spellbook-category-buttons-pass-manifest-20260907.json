@@ -1,0 +1,54 @@
+{
+  "verdict": "PASS",
+  "scope": "current-user-request",
+  "display": {
+    "purpose": "final-user-visible-delivery",
+    "trigger": "task-final-delivery",
+    "viewer": "pureref",
+    "finalPassBeforeOpen": true
+  },
+  "requirements": [
+    {
+      "requirement": "Mage Wars 法术书类别按钮要做大，不能继续像小标签。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：类别按钮从 min-h 1.55rem / text 0.66rem 调整为 min-h 2rem / text 0.78rem，并加入 whitespace-nowrap。",
+        "src/games/mage-wars/Board.tsx：类别按钮列宽从 clamp(2.5rem, 3vw, 3.625rem) 调整为 clamp(4.75rem, 4.7vw, 5.5rem)。",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts 与 e2e/mage-wars/mage-wars-tutorial.e2e.ts：断言分类按钮宽度 >= 72px，高度 >= 30px，单行且文字不截断。"
+      ]
+    },
+    {
+      "requirement": "放大类别按钮后，底部仍要显示 6 张法术书牌、计划槽位和主按钮，不允许靠缩卡或减少牌数适配。",
+      "status": "PASS",
+      "evidence": [
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/mage-wars-tutorial.e2e.ts \"1366x768 真实卡面点击计划且计划槽位不被遮挡\" -> 1 passed。",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/mage-wars-tutorial.e2e.ts \"1920x1080 真实卡面点击计划且计划槽位不被遮挡\" -> 1 passed。",
+        "test-results/evidence-screenshots/mage-wars/tutorial-plan-click-responsive/：1366 和 1920 当前截图已重新生成。"
+      ]
+    },
+    {
+      "requirement": "类别按钮必须仍是真筛选控件，点击能改变可见法术集合。",
+      "status": "PASS",
+      "evidence": [
+        "src/games/mage-wars/Board.tsx：分类按钮仍调用 setCategory(id) 与 setPage(0)，没有改触发路径。",
+        "node scripts/infra/run-e2e-single.mjs ci e2e/mage-wars/foundation-board-runtime.e2e.ts \"2560x1304 真实入口验证放大镜悬浮、宽屏布局和地图自由查看\" -> 1 passed。",
+        "e2e/mage-wars/foundation-board-runtime.e2e.ts：真实点击分类按钮后断言可见卡牌集合变化，并保留 aria-pressed 选中态。"
+      ]
+    }
+  ],
+  "images": [
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/spellbook-category-buttons/_labeled-for-pureref/category-buttons-20260907/00-sequence-index.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/spellbook-category-buttons/_labeled-for-pureref/category-buttons-20260907/01-labeled-00-1366-plan-card-body-click-one-of-two.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/spellbook-category-buttons/_labeled-for-pureref/category-buttons-20260907/02-labeled-03-1920-plan-card-body-click-one-of-two.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/spellbook-category-buttons/_labeled-for-pureref/category-buttons-20260907/03-labeled-e2e-desktop-2560x1304-board.png"
+  ],
+  "sourceImages": [
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/tutorial-plan-click-responsive/00-1366-plan-card-body-click-one-of-two.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/tutorial-plan-click-responsive/03-1920-plan-card-body-click-one-of-two.png",
+    "D:/gongzuo/webgame/BoardGame/test-results/evidence-screenshots/mage-wars/foundation-board-runtime/e2e-desktop-2560x1304-board.png"
+  ],
+  "notes": [
+    "本清单只覆盖本轮类别按钮放大、真实筛选和底部主流程不被挤压，不代表 Mage Wars 全游戏完成。",
+    "当前工作树已有大量其它未提交改动，本轮只把证据归因到 Mage Wars 类别按钮相关改动。"
+  ]
+}

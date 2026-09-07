@@ -28,8 +28,8 @@ import { applyDustEventEffectDeathIfNeeded } from './deathStateReadModel';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 import { buildHauntRollThresholds } from './hauntProgress';
 import {
     cloneDustRuntimeState,

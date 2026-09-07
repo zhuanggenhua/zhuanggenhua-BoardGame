@@ -9,8 +9,8 @@ import { BETRAYAL_TRAIT_LABEL as TRAIT_LABEL } from './possessionEffects';
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type UponReflectionEventHintGivenEvent = Extract<BetrayalEvent, { type: 'UPON_REFLECTION_EVENT_HINT_GIVEN' }>;
 type UponReflectionCurseBreakAttemptedEvent = Extract<BetrayalEvent, { type: 'UPON_REFLECTION_CURSE_BREAK_ATTEMPTED' }>;

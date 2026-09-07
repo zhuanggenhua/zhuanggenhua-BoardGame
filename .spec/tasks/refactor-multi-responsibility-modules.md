@@ -1,8 +1,45 @@
 ---
-status: completed
+status: in_progress
 ---
 
 # 重构单文件多职责设计债
+
+## 2026-09-07 续批：Betrayal Board 读模型职责继续下放
+
+- 本轮目标：继续处理 `src/games/betrayal/Board.tsx` 的剩余上帝入口职责；行数只作为触发信号，验收看怪物行动、作祟特殊行动目标、最新发现、事件选择、探索者目标点击、持有物使用、交易 / 搜尸提交、伤害分配、巨魔手攻击和房间探索确认是否由正式 owner 承载，且 Board 不保留 wrapper / re-export / 第二套推导。
+- 已完成怪物行动选择读模型：新增 `src/games/betrayal/monsterActionSelectionReadModel.ts`，承载幻影摄影师攻击选项、援手巨魔手移动 / 攻击选项、普通怪物开回合 / 掷移动骰 / 移动 / 攻击槽、选中怪物 entry、可移动 / 可攻击 ID 集合和目标映射；`Board.tsx` 删除旧内联怪物行动选择长块，只消费 read model 结果。
+- 已完成作祟特殊行动目标选择下放：`src/games/betrayal/hauntSpecialActionReadModel.ts` 新增 `resolveBetrayalHauntSpecialActionTargetSelectionReadModel`，承载魔法相机拍照目标、拍照属性、顽石之血躲猫猫同房 / 视线目标集合和模式判断；`Board.tsx` 不再直接拼这些目标集合。
+- 已完成动作提示 read model 深化：`src/games/betrayal/actionCueReadModel.ts` 新增 `resolveBetrayalActionCueReadModel`，承载怪物移动提示、怪物攻击提示、房间焦点、交易提示、回合提示和行动提示；旧文字 helper 收窄为 owner 内部函数，`Board.tsx` 只消费最终提示状态。
+- 已完成攻击目标状态下放：`src/games/betrayal/attackRules.ts` 新增 `resolveBetrayalAttackTargetingReadModel`，承载英雄攻击目标集合、灰尘 / 英雄 / 炸药攻击模式和炸药目标房间 ID；`Board.tsx` 不再直接调用炸药房间 helper 或自建攻击模式布尔值。
+- 已完成最近投骰确认展示下放：`src/games/betrayal/recentRollPresentation.ts` 新增 `resolveRecentRollAcknowledgementPresentation`，承载确认参与者、已确认数、总数、观看者确认资格和是否已完成；底层确认 helper 改为 owner 内部函数。
+- 已完成最新发现展示深化：`src/games/betrayal/latestDiscoveryPresentation.ts` 承载发现面板显隐、事件伤害独立展示、确认进度、搜索序列索引、按钮状态、发现卡 / 持有物展示标题和作祟揭示后队列恢复；`Board.tsx` 只保留队列状态与点击 wiring。
+- 已完成事件选择 ready / payload 下放：`src/games/betrayal/eventChoicePreview.ts` 承载自动提交 ready 判断、事件选择预览和 `RESOLVE_EVENT_CHOICE` 命令 payload；`Board.tsx` 不再直接拼事件选择命令字段。
+- 已完成探索者目标点击路由下放：新增 `src/games/betrayal/explorerTargetSelectionReadModel.ts`，承载点击探索者后是怪物攻击、幻影摄影师攻击、作祟攻击、传染交换、交易 / 搜尸目标还是持有物目标；`Board.tsx` 只按 action 结果派发或更新页面状态。
+- 已完成作祟使用与持有物使用提交下放：`src/games/betrayal/hauntActionContextReadModel.ts` 承载木乃伊女孩拿起 / 交给木乃伊的视觉计划，`src/games/betrayal/inventoryPresentation.ts` 承载 `USE_POSSESSION` 命令 payload；`Board.tsx` 不再内联作祟 token 目标或持有物目标字段。
+- 已完成交易 / 搜尸提交与伤害分配下放：`src/games/betrayal/tradeFlowReadModel.ts` 承载交易 / 搜尸动作命令投影，`src/games/betrayal/damageAllocationReadModel.ts` 承载胸针切换、伤害属性调整、可增量判断和 `RESOLVE_DAMAGE_ALLOCATION` payload；`Board.tsx` 只保留页面状态清理与 dispatch。
+- 已完成巨魔手攻击 payload 收口：`src/games/betrayal/hauntAttackRewardReadModel.ts` 承载援手巨魔手单手 / 合击命令 payload，`src/games/betrayal/commandTypes.ts` 直接引用该 owner 类型；`Board.tsx` 和作祟行动 read model 不再各自复制合击字段规则。
+- 已完成房间探索确认 payload 下放：`src/games/betrayal/roomDiscoveryModel.ts` 承载 `EXPLORE_ROOM` 命令 payload 类型和构造，`src/games/betrayal/commandTypes.ts` 直接引用该 owner 类型；`Board.tsx` 不再内联房间、朝向、埋葬事件和跳过事件符号字段拼装。
+- 当前复核：`Board.tsx` 当前约 6,973 行，`game.ts` 约 4,623 行，`roomDiscoveryModel.ts` 约 1,434 行，`latestDiscoveryPresentation.ts` 约 833 行，`eventChoicePreview.ts` 约 556 行，`tradeFlowReadModel.ts` 约 696 行，`damageAllocationReadModel.ts` 约 219 行；数字不是完成证明，只说明本批迁出的现实职责不再由 Board 直接承担。
+- 当前验证：`npx eslint src/games/betrayal/Board.tsx src/games/betrayal/latestDiscoveryPresentation.ts src/games/betrayal/eventChoicePreview.ts src/games/betrayal/explorerTargetSelectionReadModel.ts src/games/betrayal/hauntActionContextReadModel.ts src/games/betrayal/inventoryPresentation.ts src/games/betrayal/tradeFlowReadModel.ts src/games/betrayal/damageAllocationReadModel.ts src/games/betrayal/hauntAttackRewardReadModel.ts src/games/betrayal/roomDiscoveryModel.ts src/games/betrayal/commandTypes.ts --quiet` 通过；`npx tsc --noEmit --pretty false --incremental false` 通过；`npx vitest run src/games/betrayal/__tests__/Board.foundation.test.tsx -t "普通回合主动点击交易后点同房目标会进入可见交易流程|魔法相机剧本真实页面能执行拍照并显示本质夺取反馈|魔法相机剧本幻影摄影师攻击槽点击后才高亮视线目标|枪会在真实页面选择武器后高亮并连线视线内非同房间叛徒|肉质苔癣待选事件能在真实页面跳过可选效果|神秘液体待选事件能在真实页面拒绝或喝下后承接固定 3 骰结果|游魂待选事件会在真实页面同时要求选择埋葽物品和奖励属性|蜘蛛！真实探索先神志检定，并在待选项同屏保留投骰结果"` 通过，8 passed / 184 skipped；输出中的 `ECONNRESET` 为既有 happy-dom / socket teardown 噪音，命令退出码 0；`npm run spec:lint` 通过；`git diff --check` 通过，输出只剩既有 LF/CRLF 提示、无 whitespace error。
+
+## 2026-09-06 续批：Mage Wars Board / domain-flow 测试职责拆分
+
+- 本轮目标：继续处理 Mage Wars 的上帝入口问题；行数只作为症状，验收看规则读模型、展示几何、测试夹具和行为合同是否离开 `Board.tsx` / `domain-flow.test.ts`，且不保留 wrapper / re-export / 兼容壳。
+- 已迁出 `src/games/mage-wars/Board.tsx` 非 Board 职责：竞技场展示几何与墙边描述进入 `ui/arenaPresentation.ts`，法术书展示排序进入 `ui/spellbookPresentation.ts`，Choice Request 目标读取与排序进入 `ui/targetSelectionReadModel.ts`，教程运行时同步 key 进入 `ui/tutorialRuntimeSyncKey.ts`，玩家 / 实体展示关系进入 `ui/arenaEntityPresentation.ts`，行动状态读模型进入 `ui/actionReadModel.ts`，选中单位 / 法师动作浮层进入 `ui/selectedAbilityActionDock.tsx`；`Board.tsx` 直接消费新 owner，不保留本地转发。
+- 已删除原 `src/games/mage-wars/__tests__/domain-flow.test.ts` 集中测试套件；公共合法状态构造、命令执行、事件读取、测试对象构造和 prompt facade 进入 `src/games/mage-wars/__tests__/helpers/domainFlowHarness.ts`，行为断言按合同拆到 15 个测试 owner：`spell-cast-family-gate.test.ts`、`phase-flow.test.ts`、`wall-mechanics.test.ts`、`spell-resolution.test.ts`、`creature-summoning.test.ts`、`arena-action-flow.test.ts`、`combat-enchantments.test.ts`、`guard-defense-window.test.ts`、`arena-object-attacks.test.ts`、`spell-action-cards.test.ts`、`object-enchantments.test.ts`、`mage-equipment.test.ts`、`control-area-spells.test.ts`、`status-upkeep-flow.test.ts`、`reaction-equipment.test.ts`。
+- 当前复核：`Board.tsx` 当前约 4,653 行；`domain-flow.test.ts` 已从约 15,742 行的多职责测试文件退出为正式 owner 分组。这个数字不是完成证明，只说明最严重测试上帝文件已经不再承载所有 Mage Wars 领域合同。
+- 当前验证：拆分后的 15 个 Mage Wars 领域测试文件共 202 个用例通过；Mage Wars 全目录 34 个测试文件、426 个用例通过；`npm run test:structure` 通过；目标 ESLint 覆盖新测试 owner、`domainFlowHarness.ts` 和 Mage Wars Board 拆分 owner 为 0 errors；`npx tsc --noEmit --pretty false --incremental false` 通过；`npm run spec:lint` 通过；`git diff --check` 只有既有 LF/CRLF warning、无 whitespace error。
+- 后续边界：新增 Mage Wars 领域回归时必须选择对应行为 owner；没有正确 owner 时先建新 owner 文件，禁止恢复 `domain-flow.test.ts` 或把新规则断言追加到主 Board。
+
+## 2026-09-06 续批：Betrayal 运行时 / Board 职责拆分
+
+- 本轮目标：继续处理 `src/games/betrayal/Board.tsx` 与 `src/games/betrayal/game.ts` 的上帝入口问题；行数只作为症状，验收看职责 owner 是否离开主入口、消费者是否直接切到新 owner、是否没有 wrapper / re-export 中间层。
+- 已迁出 `Board.tsx` 作祟主行动选择读模型到 `src/games/betrayal/hauntActionContextReadModel.ts`：承载作祟行动优先级、按钮文案、禁用原因、特殊行动预算、灰尘搜索 / 治疗属性选择和命令 payload；`Board.tsx` 只消费结果并保留点击 handler。
+- 已补强 `src/games/betrayal/inventoryPresentation.ts`：承载选中持有物是否需要目标、是否被特殊行动状态阻止、最终禁用原因和使用状态文案；`Board.tsx` 不再内联这棵条件树。
+- 已迁出 `game.ts` 事件合同到 `src/games/betrayal/events.ts`：`EVENTS` 与 `BetrayalEvent` 由事件 owner 承载，`game.ts` 只保留引擎接线所需导入和对外类型兼容导出。
+- 已迁出 `game.ts` 命令合同到 `src/games/betrayal/commandTypes.ts`：`BetrayalCommandType`、`BetrayalCommandMap` 与 `BetrayalCommand` 由命令 owner 承载，后续新增命令不得先塞回 `game.ts`。
+- 当前复核：`game.ts` 已从约 5,477 行降到 4,643 行；`Board.tsx` 已从本续批开始时约 8,928 行降到 8,665 行。这个数字不是完成证明，只说明最明显的命令 / 事件合同和两块 Board 读模型已离开主入口。
+- 当前验证：`npx tsc --noEmit --pretty false --incremental false` 已通过；目标 ESLint 覆盖新增 Board read model 与 `Board.tsx` 时为 0 errors，剩余为既有 React Hook warnings。
 
 ## 涉及范围
 
@@ -185,7 +222,7 @@ status: completed
 
 ### 负向验收
 
-- 禁止恢复旧集中测试文件：`server.test.ts`、`payment-selection.test.ts`、`firstScenarioRuntime.test.ts`。
+- 禁止恢复旧集中测试文件：`server.test.ts`、`payment-selection.test.ts`、`firstScenarioRuntime.test.ts`、`domain-flow.test.ts`。
 - 禁止把已拆出的 presentation / read model owner 重新内联到 `Board.tsx`。
 - 禁止把新规则分支、新命令分支或新作祟 / 战斗 / 房间 / 事件逻辑继续追加到 `game.ts`，除非本轮是紧急最小修复且同步登记拆分任务。
 - 禁止用“行数下降”替代职责验收；每块迁移必须证明原文件现实责任减少、公开行为不变、旧入口没有形成第二套真相。

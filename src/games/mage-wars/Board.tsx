@@ -1,16 +1,16 @@
 import {
     useLayoutEffect,
+    useId,
     useMemo,
+    useRef,
     useState,
     type CSSProperties,
     type Dispatch,
-    type KeyboardEvent as ReactKeyboardEvent,
-    type MouseEvent as ReactMouseEvent,
     type SetStateAction,
+    type SVGProps,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Droplet, Heart, Sparkles, ZoomIn } from 'lucide-react';
-import { createPortal } from 'react-dom';
+import { ZoomIn } from 'lucide-react';
 import type { CardPreviewRef } from '../../core';
 import { EndgameOverlay } from '../../components/game/framework/widgets/EndgameOverlay';
 import { ZoomPanViewport } from '../../components/game/framework';
@@ -38,7 +38,6 @@ import { useEndgame } from '../../hooks/game/useEndgame';
 import { useTutorial, useTutorialBridge } from '../../contexts/TutorialContext';
 import {
     MAGE_WARS_OBJECT_ABILITY_IDS,
-    getMageWarsWallEdgeId,
     type ArenaZoneId,
     type MageWarsMageAbilityId,
     type MageWarsObjectAbilityId,
@@ -55,12 +54,10 @@ import {
 } from './domain';
 import type { MageWarsWallState } from './domain/types';
 import {
-    getPresetMageSetupFromConfig,
     getMageWarsMageAbilityFromConfig,
     getMageWarsSpellCardFromConfig,
-    getPresetSpellbookEntriesFromConfig,
 } from './data/configPackage';
-import { areAdjacentZones, doesMageWarsWallBlockLineOfSight, isArenaZoneId } from './domain/utils';
+import { areAdjacentZones } from './domain/utils';
 import { mageWarsObjectAbilityRegistry } from './domain/abilityCatalog';
 import {
     buildMageWarsObjectAbilityActivationOpportunity,
@@ -92,23 +89,63 @@ import {
 import {
     canMageWarsObjectUsePostMoveQuickAction,
     getMageWarsObjectAttackProfiles,
-    hasMageWarsStunStatus,
     isMageWarsArenaObjectRestrained,
-    isMageWarsObjectAttackTargetInRange,
     resolveMageWarsObjectEffectiveLife,
-    type MageWarsObjectAttackProfile,
 } from './domain/spellRules';
 import {
-    getMageWarsPlayerSpellbookEntries,
-    type MageWarsPlayerSpellbookEntry,
-} from './domain/spellbook';
+    MAGE_WARS_ARENA_WORLD_HEIGHT,
+    MAGE_WARS_ARENA_WORLD_WIDTH,
+    ZONE_RECTS,
+    buildMageWarsWallEdgeDescriptors,
+    getZoneFieldCardOffsetStyle,
+    getZoneLaneItemStyle,
+    getZoneOwnerLaneLayoutClassName,
+    getZoneOwnerLaneOverflowMode,
+    isBottomArenaRowZone,
+    pct,
+    type WallEdgeDescriptor,
+    type ZoneEntityDensity,
+} from './ui/arenaPresentation';
+import { getMageWarsSpellbookDisplayEntries } from './ui/spellbookPresentation';
+import {
+    buildMageAbilityTargetsByObjectId,
+    buildNonEmptySet,
+    buildObjectAbilityTargetsByObjectId,
+    buildSpellCastTargetsByObjectId,
+    buildSpellCastTargetsByPlayerId,
+    buildSpellCastTargetsByWallEdgeId,
+    buildSpellCastTargetsByZoneId,
+    compareObjectAbilityTargets,
+    hasEnabledChoiceCandidate,
+    hasSameObjectPath,
+    isMageWarsObjectAttackTargetSelectable,
+    readMageWarsCastSpellChainObjectIds,
+    readMageWarsCastSpellPayload,
+    startsWithObjectPath,
+} from './ui/targetSelectionReadModel';
+import { buildMageWarsTutorialRuntimeSyncKey } from './ui/tutorialRuntimeSyncKey';
+import {
+    getMageDisplayLabel,
+    isMageWarsAttachmentObject,
+    isMageWarsMageAttachmentObject,
+    isMageWarsObjectAttachmentObject,
+    isMageWarsZoneAttachmentObject,
+    isPlayerId,
+    resolveMageWarsPhaseActorId,
+    resolveOpponentId,
+    resolveSeatOwnerSide,
+    resolveViewingPlayerId,
+    type SeatOwnerSide,
+} from './ui/arenaEntityPresentation';
+import {
+    canMageWarsObjectStartAction,
+    isCreatureActionPhase,
+    isMageWarsActionableCreatureObject,
+} from './ui/actionReadModel';
+import { MageWarsSelectedAbilityActionDock } from './ui/selectedAbilityActionDock';
 
 type Props = GameBoardProps<MageWarsCore>;
 
-const MAGE_WARS_ARENA_ASSET_WIDTH = 3210;
-const MAGE_WARS_ARENA_ASSET_HEIGHT = 2407;
-const MAGE_WARS_ARENA_WORLD_WIDTH = 1920;
-const MAGE_WARS_ARENA_WORLD_HEIGHT = MAGE_WARS_ARENA_WORLD_WIDTH * (MAGE_WARS_ARENA_ASSET_HEIGHT / MAGE_WARS_ARENA_ASSET_WIDTH);
 const MAGE_WARS_DESKTOP_UI_DESIGN_WIDTH = 1920;
 const MAGE_WARS_DESKTOP_UI_DESIGN_HEIGHT = 1080;
 const MAGE_WARS_DESKTOP_BOTTOM_GAP_PX = 8;
@@ -131,6 +168,12 @@ const MAGE_WARS_HUD_COMPACT_HINT_CARD_HEIGHT_REM = 4.5;
 const MAGE_WARS_MIN_CAMERA_BOTTOM_UI_INSET = 316;
 const MAGE_WARS_CAMERA_BOTTOM_UI_INSET_RATIO = 0.28;
 const MAGE_WARS_MAX_CAMERA_BOTTOM_UI_INSET_RATIO = 0.45;
+const MAGE_WARS_TUTORIAL_ARENA_TARGET_PREFIXES = [
+    'mw-zone-',
+    'mw-field-object-',
+    'mw-arena-object-',
+    'mw-mage-entity-',
+] as const;
 
 type MageWarsMagnifiedPreview = {
     previewRef: CardPreviewRef;
@@ -138,20 +181,6 @@ type MageWarsMagnifiedPreview = {
     aspectRatio: number;
     sourceCardId?: number;
     mageId?: string;
-};
-
-type ZoneRect = {
-    left: number;
-    top: number;
-    width: number;
-    height: number;
-};
-
-type WallEdgeDescriptor = {
-    edgeId: MageWarsWallEdgeId;
-    zoneIds: [ArenaZoneId, ArenaZoneId];
-    orientation: 'vertical' | 'horizontal';
-    style: CSSProperties;
 };
 
 const TOKEN_IMAGES = {
@@ -170,6 +199,14 @@ const TOKEN_IMAGES = {
     channeling: 'mage-wars/tokens/channeling/channeling-token-front',
 } as const;
 
+const resolveMageWarsTutorialArenaPanTarget = (highlightTarget?: string): string | null => {
+    if (!highlightTarget) return null;
+    if (MAGE_WARS_TUTORIAL_ARENA_TARGET_PREFIXES.some((prefix) => highlightTarget.startsWith(prefix))) {
+        return highlightTarget;
+    }
+    return null;
+};
+
 const VISIBLE_STATUS_TOKENS = [
     { id: 'burn', image: TOKEN_IMAGES.burn, labelKey: 'tokens.burn' },
     { id: 'daze', image: TOKEN_IMAGES.daze, labelKey: 'tokens.daze' },
@@ -187,7 +224,7 @@ const MAGE_WARS_LIFE_BADGE_CONTAINER_STYLE = {
 } as CSSProperties;
 
 const MAGE_WARS_LIFE_BADGE_STYLE: CSSProperties = {
-    fontSize: 'clamp(15px, 30cqw, 32px)',
+    fontSize: 'clamp(12px, 18cqw, 24px)',
     lineHeight: 0.95,
     paddingInline: '0.18em',
     paddingBlock: '0.04em',
@@ -233,123 +270,15 @@ function resolvePhaseAdvanceActionLabelKey(phase: MageWarsPhase): string {
     }
 }
 
-const ZONE_RECTS: Record<ArenaZoneId, ZoneRect> = {
-    a1: { left: 0, top: 0, width: 25, height: 33.3333 },
-    b1: { left: 25, top: 0, width: 25, height: 33.3333 },
-    c1: { left: 50, top: 0, width: 25, height: 33.3333 },
-    d1: { left: 75, top: 0, width: 25, height: 33.3333 },
-    a2: { left: 0, top: 33.3333, width: 25, height: 33.3333 },
-    b2: { left: 25, top: 33.3333, width: 25, height: 33.3333 },
-    c2: { left: 50, top: 33.3333, width: 25, height: 33.3333 },
-    d2: { left: 75, top: 33.3333, width: 25, height: 33.3333 },
-    a3: { left: 0, top: 66.6666, width: 25, height: 33.3333 },
-    b3: { left: 25, top: 66.6666, width: 25, height: 33.3333 },
-    c3: { left: 50, top: 66.6666, width: 25, height: 33.3333 },
-    d3: { left: 75, top: 66.6666, width: 25, height: 33.3333 },
-};
-
-const WALL_EDGE_THICKNESS = 2.3;
-
-function buildMageWarsWallEdgeDescriptors(core: MageWarsCore): WallEdgeDescriptor[] {
-    return core.arena.flatMap((zone) => {
-        const rect = ZONE_RECTS[zone.id];
-        const right = core.arena.find((candidate) => candidate.row === zone.row && candidate.col === zone.col + 1);
-        const down = core.arena.find((candidate) => candidate.row === zone.row + 1 && candidate.col === zone.col);
-        const descriptors: WallEdgeDescriptor[] = [];
-
-        if (right) {
-            descriptors.push({
-                edgeId: getMageWarsWallEdgeId(zone.id, right.id),
-                zoneIds: [zone.id, right.id],
-                orientation: 'vertical',
-                style: {
-                    left: pct(rect.left + rect.width - (WALL_EDGE_THICKNESS / 2)),
-                    top: pct(rect.top + 1.2),
-                    width: pct(WALL_EDGE_THICKNESS),
-                    height: pct(rect.height - 2.4),
-                },
-            });
-        }
-        if (down) {
-            descriptors.push({
-                edgeId: getMageWarsWallEdgeId(zone.id, down.id),
-                zoneIds: [zone.id, down.id],
-                orientation: 'horizontal',
-                style: {
-                    left: pct(rect.left + 1.2),
-                    top: pct(rect.top + rect.height - (WALL_EDGE_THICKNESS / 2)),
-                    width: pct(rect.width - 2.4),
-                    height: pct(WALL_EDGE_THICKNESS),
-                },
-            });
-        }
-
-        return descriptors;
-    });
-}
-
 const CAST_PHASES = new Set(['deployment', 'initiativeQuickcast', 'creatureAction', 'finalQuickcast']);
 const SIMULTANEOUS_PREPARATION_PHASES = new Set(['reset', 'channel', 'upkeep', 'planning']);
 
 type SpellbookCategoryId = 'all' | 'attack' | 'enchantment' | 'creature' | 'incantation' | 'equipment';
 
 type FieldCardRole = 'source' | 'target';
-type ZoneEntityDensity = 'solo' | 'duel' | 'dense' | 'packed';
-type SeatOwnerSide = 'seat-left' | 'seat-right' | 'neutral';
 
 const ZONE_LOOSE_ENTITY_HEIGHT_CLASS = 'h-[clamp(13rem,19.25vh,16rem)]';
 const ZONE_PACKED_ENTITY_HEIGHT_CLASS = 'h-[clamp(9.5rem,14.075vh,13rem)]';
-
-function getZoneLaneItemStyle(
-    laneIndex?: number,
-    priority = false,
-): CSSProperties | undefined {
-    if (laneIndex == null) {
-        return priority ? { zIndex: 80 } : undefined;
-    }
-
-    return {
-        zIndex: priority ? 80 : 20 + laneIndex,
-    };
-}
-
-function getZoneOwnerLaneLayoutClassName(entityDensity: ZoneEntityDensity): string {
-    if (entityDensity === 'packed') {
-        return 'grid grid-flow-col grid-rows-3 auto-cols-max place-items-center justify-center content-center gap-x-1.5 gap-y-0.5 overflow-visible py-0.5';
-    }
-
-    if (entityDensity === 'dense') {
-        return 'flex flex-col flex-nowrap content-center items-center justify-center gap-1 py-2';
-    }
-
-    return 'flex flex-col flex-nowrap content-center items-center justify-center gap-2 py-3';
-}
-
-function getZoneOwnerLaneOverflowMode(entityDensity: ZoneEntityDensity): 'fit' | 'wrap-columns' {
-    return entityDensity === 'packed' ? 'wrap-columns' : 'fit';
-}
-
-function isBottomArenaRowZone(zoneId: ArenaZoneId): boolean {
-    return zoneId.endsWith('3');
-}
-
-function getMageWarsSpellbookDisplayEntries(
-    player: Pick<MageWarsPlayerState, 'mageId' | 'spellbookEntries'>,
-): MageWarsPlayerSpellbookEntry[] {
-    const presetOrder = new Map(
-        getPresetSpellbookEntriesFromConfig(player.mageId)
-            .map((entry, index) => [entry.spellCardId, index] as const),
-    );
-
-    return [...getMageWarsPlayerSpellbookEntries(player)].sort((left, right) => {
-        const leftOrder = presetOrder.get(left.spellCardId);
-        const rightOrder = presetOrder.get(right.spellCardId);
-        if (leftOrder !== undefined || rightOrder !== undefined) {
-            return (leftOrder ?? Number.MAX_SAFE_INTEGER) - (rightOrder ?? Number.MAX_SAFE_INTEGER);
-        }
-        return left.spellCardId - right.spellCardId;
-    });
-}
 
 type PendingObjectAbilitySelection = {
     objectId: string;
@@ -365,23 +294,12 @@ type PendingSpellCastSelection =
 
 const MAGE_WARS_OBJECT_ABILITY_ID_LIST = Object.values(MAGE_WARS_OBJECT_ABILITY_IDS) as MageWarsObjectAbilityId[];
 
-function getMageWarsObjectAbilityButtonTestId(abilityId: MageWarsObjectAbilityId): string {
-    if (abilityId === MAGE_WARS_OBJECT_ABILITY_IDS.ASYRAN_CLERIC_HEALING_LIGHT) {
-        return 'mage-wars-selected-object-ability-healing-light';
-    }
-    return `mage-wars-selected-object-ability-${abilityId.replace(/[^a-z0-9]+/gi, '-')}`;
-}
-
 function cx(...classes: Array<string | false | null | undefined>): string {
     return classes.filter(Boolean).join(' ');
 }
 
 function escapeCssAttributeValue(value: string): string {
     return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
-}
-
-function buildSortedStringKey(values?: Iterable<string>): string {
-    return values ? Array.from(values).sort().join('|') : '';
 }
 
 function CardInspectButton({
@@ -435,92 +353,6 @@ function CardInspectButton({
     );
 }
 
-function pct(value: number): string {
-    return `${value}%`;
-}
-
-function isPlayerId(value: string | null | undefined): value is PlayerId {
-    return value != null;
-}
-
-function resolveMageWarsPhaseActorId(core: MageWarsCore): PlayerId {
-    return core.phaseActorId ?? core.currentPlayerId;
-}
-
-function isMageWarsAttachmentObject(object: MageWarsArenaObjectState): boolean {
-    if (object.kind === 'equipment') {
-        return object.anchoredToPlayerId !== undefined || object.anchoredToObjectId !== undefined;
-    }
-    if (object.kind !== 'enchantment') return false;
-    return object.anchoredToPlayerId !== undefined
-        || object.anchoredToObjectId !== undefined
-        || object.anchoredToZoneId !== undefined;
-}
-
-function isMageWarsMageAttachmentObject(
-    object: MageWarsArenaObjectState,
-    playerId: PlayerId,
-): boolean {
-    return isMageWarsAttachmentObject(object) && object.anchoredToPlayerId === playerId;
-}
-
-function isMageWarsObjectAttachmentObject(
-    object: MageWarsArenaObjectState,
-    hostObjectId: string,
-): boolean {
-    return isMageWarsAttachmentObject(object) && object.anchoredToObjectId === hostObjectId;
-}
-
-function isMageWarsZoneAttachmentObject(
-    object: MageWarsArenaObjectState,
-    zoneId: ArenaZoneId,
-): boolean {
-    return isMageWarsAttachmentObject(object) && object.anchoredToZoneId === zoneId;
-}
-
-function resolveViewingPlayerId(core: MageWarsCore, playerID: string | null): PlayerId {
-    if (isPlayerId(playerID) && core.players[playerID]) return playerID;
-    return core.currentPlayerId;
-}
-
-function resolveOpponentId(core: MageWarsCore, playerId: PlayerId): PlayerId | null {
-    return core.playerOrder.find((candidate) => candidate !== playerId) ?? null;
-}
-
-function resolveSeatOwnerSide(core: MageWarsCore, playerId: PlayerId | undefined): SeatOwnerSide {
-    if (playerId == null) return 'neutral';
-    const seatIndex = core.playerOrder.indexOf(playerId);
-    if (seatIndex === 0) return 'seat-left';
-    if (seatIndex === 1) return 'seat-right';
-    return 'neutral';
-}
-
-function getMageDisplayLabel(player: MageWarsPlayerState): string {
-    return getPresetMageSetupFromConfig(player.mageId).displayName;
-}
-
-function getZoneFieldCardOffsetStyle(zoneId: ArenaZoneId, hasFieldCards: boolean): CSSProperties | undefined {
-    if (!hasFieldCards) return undefined;
-
-    const offsets: Partial<Record<ArenaZoneId, { x: number; y: number }>> = {
-        a1: { x: 70, y: 0 },
-        a2: { x: 70, y: 0 },
-        a3: { x: 70, y: 0 },
-        b1: { x: 45, y: 0 },
-        b2: { x: 45, y: 0 },
-        b3: { x: 45, y: 0 },
-        c1: { x: -45, y: 0 },
-        c2: { x: -45, y: 0 },
-        c3: { x: -45, y: 0 },
-        d1: { x: -70, y: 0 },
-        d2: { x: -70, y: 0 },
-        d3: { x: -70, y: 0 },
-    };
-    const offset = offsets[zoneId];
-
-    return offset ? { transform: `translate(${offset.x}px, ${offset.y}px)` } : undefined;
-}
-
 function TokenImage({
     src,
     alt,
@@ -542,10 +374,14 @@ function TokenImage({
 
 function EntityStatusTokenRail({
     guarding,
+    actionReady,
+    quickcastReady,
     statusTokens,
     compact = false,
 }: {
     guarding?: boolean;
+    actionReady?: boolean;
+    quickcastReady?: boolean;
     statusTokens: MageWarsArenaObjectState['statusTokens'] | MageWarsPlayerState['statusTokens'];
     compact?: boolean;
 }) {
@@ -558,35 +394,94 @@ function EntityStatusTokenRail({
         }))
         .filter((token) => token.count > 0);
 
-    if (!guarding && visibleStatusTokens.length === 0) return null;
+    const hasActionToken = actionReady !== undefined;
+    const hasQuickcastToken = quickcastReady !== undefined;
+    const hasTokenRail = Boolean(hasActionToken || hasQuickcastToken || guarding || visibleStatusTokens.length > 0);
+    if (!hasTokenRail) return null;
+
+    const tokenSizeClass = compact ? 'h-6 w-6' : 'h-7 w-7';
+    const renderActionToken = (position: string) => (hasActionToken ? (
+        <span
+            className={cx(
+                'grid place-items-center rounded-full',
+                tokenSizeClass,
+            )}
+            data-testid="mage-wars-action-token-slot"
+            data-token-kind="action"
+            data-action-token-state={actionReady ? 'ready' : 'spent'}
+            data-action-token-image-key={actionReady ? TOKEN_IMAGES.actionReady : TOKEN_IMAGES.actionSpent}
+            data-action-token-position={position}
+        >
+            <TokenImage
+                src={actionReady ? TOKEN_IMAGES.actionReady : TOKEN_IMAGES.actionSpent}
+                alt={t(actionReady ? 'tokens.actionReady' : 'tokens.actionSpent')}
+                className="h-full w-full"
+            />
+        </span>
+    ) : null);
+    const renderQuickcastToken = (position: string) => (hasQuickcastToken ? (
+        <span
+            className={cx(
+                'grid place-items-center rounded-full',
+                tokenSizeClass,
+            )}
+            data-testid="mage-wars-quickcast-token-slot"
+            data-token-kind="quickcast"
+            data-quickcast-token-state={quickcastReady ? 'ready' : 'spent'}
+            data-quickcast-token-image-key={quickcastReady ? TOKEN_IMAGES.quickcastReady : TOKEN_IMAGES.quickcastSpent}
+            data-quickcast-token-position={position}
+        >
+            <TokenImage
+                src={quickcastReady ? TOKEN_IMAGES.quickcastReady : TOKEN_IMAGES.quickcastSpent}
+                alt={t(quickcastReady ? 'tokens.quickcastReady' : 'tokens.quickcastSpent')}
+                className="h-full w-full"
+            />
+        </span>
+    ) : null);
+    const renderGuardToken = (position: string) => (guarding ? (
+        <span
+            className={cx(
+                'flex items-center justify-center',
+                tokenSizeClass,
+            )}
+            data-testid="mage-wars-guard-token-slot"
+            data-guard-token-position={position}
+        >
+            <TokenImage src={TOKEN_IMAGES.guard} alt={t('tokens.guard')} className={compact ? 'h-5 w-5' : 'h-6 w-6'} />
+        </span>
+    ) : null);
+    const statusTokenRow = visibleStatusTokens.length > 0 ? (
+        <span
+            className="flex flex-col items-center gap-0.5"
+            data-testid="mage-wars-status-token-row"
+        >
+            {visibleStatusTokens.map(({ id, image, count }) => (
+                <span
+                    key={id}
+                    className="inline-flex min-h-7 min-w-7 items-center justify-center gap-0.5 rounded-full bg-black/62 px-1 py-0.5 text-[0.62rem] font-bold text-amber-50 shadow-[0_4px_12px_rgba(0,0,0,0.38)]"
+                >
+                    <TokenImage src={image} alt={getVisibleStatusTokenLabel(t, id)} className="h-5 w-5" />
+                    {count > 1 ? count : null}
+                </span>
+            ))}
+        </span>
+    ) : null;
 
     return (
         <div className={cx(
-            'pointer-events-none absolute left-1/2 top-full z-30 flex -translate-x-1/2 flex-col items-center gap-0.5',
-            compact
-                ? 'mt-0.5 scale-[0.72] origin-top'
-                : 'mt-1',
+            'pointer-events-none absolute left-1 top-1/2 z-40 flex -translate-y-1/2 flex-col items-center justify-start gap-0.5',
+            compact && 'origin-left scale-[0.86]',
         )}
             data-testid="mage-wars-entity-status-token-rail"
+            data-token-rail-position="entity-left-inside-midline"
+            data-token-rail-axis="vertical"
+            data-token-rail-placement="inside"
+            data-token-rail-layout="stack"
         >
-            {guarding ? (
-                <span className="flex w-full justify-center" data-testid="mage-wars-guard-token-slot">
-                    <TokenImage src={TOKEN_IMAGES.guard} alt={t('tokens.guard')} className="h-7 w-7" />
-                </span>
-            ) : null}
-            {visibleStatusTokens.length > 0 ? (
-                <span className="flex items-center gap-1" data-testid="mage-wars-status-token-row">
-                    {visibleStatusTokens.map(({ id, image, count }) => (
-                        <span
-                            key={id}
-                            className="inline-flex items-center gap-0.5 rounded-full bg-black/62 px-1 py-0.5 text-[0.62rem] font-bold text-amber-50 shadow-[0_4px_12px_rgba(0,0,0,0.38)]"
-                        >
-                            <TokenImage src={image} alt={getVisibleStatusTokenLabel(t, id)} className="h-5 w-5" />
-                            {count > 1 ? count : null}
-                        </span>
-                    ))}
-                </span>
-            ) : null}
+            {renderActionToken('entity-left-inside-midline')}
+            {renderQuickcastToken('entity-left-inside-midline')}
+            {renderGuardToken('entity-left-inside-midline')}
+            {statusTokenRow}
         </div>
     );
 }
@@ -611,7 +506,7 @@ function MageWarsLifeDamageReadout({
         <div
             aria-hidden="true"
             className={cx(
-                'pointer-events-none absolute inset-0 z-20 flex items-center justify-center transition-opacity',
+                'pointer-events-none absolute inset-0 z-20 flex items-center justify-end pr-[8%] transition-opacity',
                 showLifeTotals ? 'opacity-100' : 'opacity-0 group-hover:opacity-100',
             )}
             data-testid={testId}
@@ -619,6 +514,7 @@ function MageWarsLifeDamageReadout({
             data-life={life}
             data-life-remaining={remaining}
             data-life-visible={showLifeTotals ? 'true' : 'false'}
+            data-life-readout-position="entity-right-midline"
             data-damage-ratio={damageRatio.toFixed(3)}
             style={MAGE_WARS_LIFE_BADGE_CONTAINER_STYLE}
         >
@@ -735,216 +631,8 @@ function MageWarsLifeToggle({
     );
 }
 
-function isCreatureActionPhase(phase: string): boolean {
-    return phase === 'creatureAction';
-}
-
-function isMageWarsActionableCreatureObject(
-    object: MageWarsArenaObjectState | undefined,
-    ownerId: PlayerId | undefined,
-): object is MageWarsArenaObjectState {
-    return Boolean(
-        object
-        && ownerId
-        && object.ownerId === ownerId
-        && object.kind === 'creature'
-        && !hasMageWarsStunStatus(object),
-    );
-}
-
-function canMageWarsObjectStartAction(
-    object: MageWarsArenaObjectState | undefined,
-    ownerId: PlayerId | undefined,
-): object is MageWarsArenaObjectState {
-    if (!isMageWarsActionableCreatureObject(object, ownerId)) return false;
-    if (object.actionReady) return true;
-    return getMageWarsObjectAttackProfiles(object)
-        .some((profile) => canMageWarsObjectUsePostMoveQuickAction(object, profile));
-}
-
-function hasEnabledChoiceCandidate(candidates: readonly { disabled?: boolean; stale?: boolean }[] | undefined): boolean {
-    return candidates?.some((candidate) => candidate.disabled !== true && candidate.stale !== true) === true;
-}
-
-function compareMageAbilityTargets(
-    left: ChoiceRequestDirectSelectionTarget<MageWarsMageAbilityActivationChoiceValue>,
-    right: ChoiceRequestDirectSelectionTarget<MageWarsMageAbilityActivationChoiceValue>,
-): number {
-    const leftStatusCount = left.value?.statusTokenIds.length ?? 0;
-    const rightStatusCount = right.value?.statusTokenIds.length ?? 0;
-    if (leftStatusCount !== rightStatusCount) return rightStatusCount - leftStatusCount;
-
-    const leftManaCost = left.value?.manaCost ?? 0;
-    const rightManaCost = right.value?.manaCost ?? 0;
-    if (leftManaCost !== rightManaCost) return rightManaCost - leftManaCost;
-
-    return left.id.localeCompare(right.id);
-}
-
-function buildMageAbilityTargetsByObjectId(
-    targets: readonly ChoiceRequestDirectSelectionTarget<MageWarsMageAbilityActivationChoiceValue>[] | undefined,
-): Map<string, ChoiceRequestDirectSelectionTarget<MageWarsMageAbilityActivationChoiceValue>[]> {
-    const map = new Map<string, ChoiceRequestDirectSelectionTarget<MageWarsMageAbilityActivationChoiceValue>[]>();
-    for (const target of targets ?? []) {
-        if (target.disabled || target.stale || typeof target.targetRef !== 'string') continue;
-        const current = map.get(target.targetRef) ?? [];
-        current.push(target);
-        map.set(target.targetRef, current);
-    }
-    for (const groupedTargets of map.values()) {
-        groupedTargets.sort(compareMageAbilityTargets);
-    }
-    return map;
-}
-
-function compareObjectAbilityTargets(
-    left: ChoiceRequestDirectSelectionTarget<MageWarsObjectAbilityActivationChoiceValue>,
-    right: ChoiceRequestDirectSelectionTarget<MageWarsObjectAbilityActivationChoiceValue>,
-): number {
-    const modeRank = (mode: MageWarsObjectAbilityActivationChoiceValue['mode']): number => {
-        if (mode === 'melee-bonus') return 0;
-        if (mode === 'heal') return 1;
-        return 2;
-    };
-    const leftModeRank = modeRank(left.value?.mode);
-    const rightModeRank = modeRank(right.value?.mode);
-    if (leftModeRank !== rightModeRank) return leftModeRank - rightModeRank;
-    return left.id.localeCompare(right.id);
-}
-
-function buildObjectAbilityTargetsByObjectId(
-    targets: readonly ChoiceRequestDirectSelectionTarget<MageWarsObjectAbilityActivationChoiceValue>[] | undefined,
-): Map<string, ChoiceRequestDirectSelectionTarget<MageWarsObjectAbilityActivationChoiceValue>[]> {
-    const map = new Map<string, ChoiceRequestDirectSelectionTarget<MageWarsObjectAbilityActivationChoiceValue>[]>();
-    for (const target of targets ?? []) {
-        if (target.disabled || target.stale || typeof target.targetRef !== 'string') continue;
-        const current = map.get(target.targetRef) ?? [];
-        current.push(target);
-        map.set(target.targetRef, current);
-    }
-    for (const groupedTargets of map.values()) {
-        groupedTargets.sort(compareObjectAbilityTargets);
-    }
-    return map;
-}
-
-function buildSpellCastTargetsByObjectId(
-    targets: readonly ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[] | undefined,
-): Map<string, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]> {
-    const map = new Map<string, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]>();
-    for (const target of targets ?? []) {
-        if (target.disabled || target.stale) continue;
-        const objectId = readMageWarsCastSpellPayload(target)?.targetObjectId;
-        if (!objectId) continue;
-        const current = map.get(objectId) ?? [];
-        current.push(target);
-        map.set(objectId, current);
-    }
-    for (const groupedTargets of map.values()) {
-        groupedTargets.sort((left, right) => left.id.localeCompare(right.id));
-    }
-    return map;
-}
-
-function buildSpellCastTargetsByPlayerId(
-    targets: readonly ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[] | undefined,
-): Map<PlayerId, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]> {
-    const map = new Map<PlayerId, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]>();
-    for (const target of targets ?? []) {
-        if (target.disabled || target.stale) continue;
-        const playerId = readMageWarsCastSpellPayload(target)?.targetPlayerId;
-        if (!playerId) continue;
-        const current = map.get(playerId) ?? [];
-        current.push(target);
-        map.set(playerId, current);
-    }
-    for (const groupedTargets of map.values()) {
-        groupedTargets.sort((left, right) => left.id.localeCompare(right.id));
-    }
-    return map;
-}
-
-function buildSpellCastTargetsByZoneId(
-    targets: readonly ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[] | undefined,
-): Map<ArenaZoneId, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]> {
-    const map = new Map<ArenaZoneId, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]>();
-    for (const target of targets ?? []) {
-        if (target.disabled || target.stale || !isArenaZoneId(target.targetRef)) continue;
-        const current = map.get(target.targetRef) ?? [];
-        current.push(target);
-        map.set(target.targetRef, current);
-    }
-    for (const groupedTargets of map.values()) {
-        groupedTargets.sort((left, right) => left.id.localeCompare(right.id));
-    }
-    return map;
-}
-
-function buildSpellCastTargetsByWallEdgeId(
-    targets: readonly ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[] | undefined,
-): Map<MageWarsWallEdgeId, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]> {
-    const map = new Map<MageWarsWallEdgeId, ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>[]>();
-    for (const target of targets ?? []) {
-        if (target.disabled || target.stale) continue;
-        const payload = readMageWarsCastSpellPayload(target);
-        const edgeId = payload?.targetWallEdgeId;
-        if (!edgeId) continue;
-        const current = map.get(edgeId) ?? [];
-        current.push(target);
-        map.set(edgeId, current);
-    }
-    for (const groupedTargets of map.values()) {
-        groupedTargets.sort((left, right) => left.id.localeCompare(right.id));
-    }
-    return map;
-}
-
-function readMageWarsCastSpellPayload(
-    targetSelection: ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>,
-): MageWarsCastSpellCommand['payload'] | null {
-    const command = targetSelection.commandPreview.find((candidateCommand) => (
-        candidateCommand.type === MAGE_WARS_COMMANDS.CAST_SPELL
-    ));
-    if (!command || !command.payload || typeof command.payload !== 'object') return null;
-    return command.payload as MageWarsCastSpellCommand['payload'];
-}
-
-function readMageWarsCastSpellChainObjectIds(
-    targetSelection: ChoiceRequestDirectSelectionTarget<MageWarsSpellCastChoiceValue>,
-): string[] {
-    const payload = readMageWarsCastSpellPayload(targetSelection);
-    if (!payload?.targetObjectId) return [];
-    return [
-        payload.targetObjectId,
-        ...(payload.chainLightningTargets ?? []).map((target) => target.targetObjectId),
-    ];
-}
-
-function startsWithObjectPath(path: readonly string[], prefix: readonly string[]): boolean {
-    return prefix.length <= path.length && prefix.every((objectId, index) => path[index] === objectId);
-}
-
-function hasSameObjectPath(left: readonly string[], right: readonly string[]): boolean {
-    return left.length === right.length && startsWithObjectPath(left, right);
-}
-
-function buildNonEmptySet<T>(values: Iterable<T>): Set<T> | undefined {
-    const set = new Set(values);
-    return set.size > 0 ? set : undefined;
-}
-
-function isMageWarsObjectAttackTargetSelectable(
-    core: MageWarsCore,
-    attackerZoneId: ArenaZoneId,
-    targetZoneId: ArenaZoneId,
-    profile: MageWarsObjectAttackProfile,
-): boolean {
-    if (!isMageWarsObjectAttackTargetInRange(core, attackerZoneId, targetZoneId, profile)) return false;
-    return profile.rangeKind !== 'ranged'
-        || !doesMageWarsWallBlockLineOfSight(core, attackerZoneId, targetZoneId);
-}
-
 type MageHudStatKind = 'life' | 'mana' | 'channeling';
+type MageHudIconTooltipSide = 'left' | 'right';
 
 const MAGE_WARS_HUD_MANA_PROGRESS_MAX = 20;
 const MAGE_WARS_HUD_CHANNELING_PROGRESS_MAX = 12;
@@ -954,16 +642,65 @@ function clampPercent(value: number): number {
 }
 
 function MageHudStatGlyph({ stat, className }: { stat: MageHudStatKind; className?: string }) {
-    const sharedProps = {
+    const sharedProps: SVGProps<SVGSVGElement> = {
         className,
-        strokeWidth: 2.35,
-        fill: 'currentColor',
+        viewBox: '0 0 24 24',
         'aria-hidden': true,
-    } as const;
+    };
 
-    if (stat === 'life') return <Heart {...sharedProps} />;
-    if (stat === 'mana') return <Droplet {...sharedProps} />;
-    return <Sparkles {...sharedProps} />;
+    if (stat === 'life') {
+        return (
+            <svg {...sharedProps} data-stat-glyph-kind="vital-heart">
+                <path
+                    d="M12 21.15c-.34-.28-.81-.64-1.36-1.06C6.18 16.68 3 13.73 3 9.84 3 6.9 5.2 4.75 8.17 4.75c1.46 0 2.84.68 3.83 1.86.99-1.18 2.37-1.86 3.83-1.86C18.8 4.75 21 6.9 21 9.84c0 3.89-3.18 6.84-7.64 10.25-.55.42-1.02.78-1.36 1.06Z"
+                    fill="currentColor"
+                />
+                <path
+                    d="M6.15 12.15h3.08l1.16-2.46 2.32 4.92 1.16-2.46h3.98"
+                    fill="none"
+                    stroke="rgba(0,0,0,0.62)"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.65"
+                />
+            </svg>
+        );
+    }
+
+    if (stat === 'mana') {
+        return (
+            <svg {...sharedProps} data-stat-glyph-kind="mana-crystal">
+                <path
+                    d="M12 1.9 20.35 9.2 12 22.2 3.65 9.2 12 1.9Z"
+                    fill="currentColor"
+                />
+                <path
+                    d="M12 1.9v20.3M3.65 9.2h16.7M7.65 9.2 12 1.9l4.35 7.3M7.65 9.2 12 22.2l4.35-13"
+                    fill="none"
+                    stroke="rgba(0,0,0,0.48)"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="1.15"
+                />
+            </svg>
+        );
+    }
+
+    return (
+        <svg {...sharedProps} data-stat-glyph-kind="channel-rune">
+            <path
+                d="M12.55 1.95 6.85 13h4.25l-1.65 9.05 7.7-12.45h-4.5l-.1-7.65Z"
+                fill="currentColor"
+            />
+            <path
+                d="M5.15 7.25a8.4 8.4 0 0 1 13.7 0M3.65 12a8.35 8.35 0 0 0 2.62 6.1M20.35 12a8.35 8.35 0 0 1-2.62 6.1"
+                fill="none"
+                stroke="currentColor"
+                strokeLinecap="round"
+                strokeWidth="1.9"
+            />
+        </svg>
+    );
 }
 
 function MageHudStatIcon({
@@ -973,6 +710,7 @@ function MageHudStatIcon({
     max,
     activeClassName,
     compact = false,
+    tooltipSide = 'right',
 }: {
     stat: MageHudStatKind;
     label: string;
@@ -980,35 +718,79 @@ function MageHudStatIcon({
     max: number;
     activeClassName: string;
     compact?: boolean;
+    tooltipSide?: MageHudIconTooltipSide;
 }) {
+    const tooltipId = useId();
+    const iconRef = useRef<HTMLDivElement | null>(null);
+    const [pointerHovering, setPointerHovering] = useState(false);
     const fillPercent = clampPercent(max > 0 ? (value / max) * 100 : 0);
     const clipTopPercent = 100 - fillPercent;
+    const tooltipText = `${label}: ${value}/${max}`;
+
+    useLayoutEffect(() => {
+        if (typeof window === 'undefined') return undefined;
+
+        const updatePointerHovering = (clientX: number, clientY: number) => {
+            const rect = iconRef.current?.getBoundingClientRect();
+            const hovering = Boolean(
+                rect
+                && clientX >= rect.left
+                && clientX <= rect.right
+                && clientY >= rect.top
+                && clientY <= rect.bottom,
+            );
+            setPointerHovering((current) => (current === hovering ? current : hovering));
+        };
+        const handlePointerMove = (event: PointerEvent) => {
+            updatePointerHovering(event.clientX, event.clientY);
+        };
+        const clearPointerHovering = () => {
+            setPointerHovering(false);
+        };
+
+        window.addEventListener('pointermove', handlePointerMove, { passive: true });
+        window.addEventListener('pointerleave', clearPointerHovering);
+        window.addEventListener('blur', clearPointerHovering);
+
+        return () => {
+            window.removeEventListener('pointermove', handlePointerMove);
+            window.removeEventListener('pointerleave', clearPointerHovering);
+            window.removeEventListener('blur', clearPointerHovering);
+        };
+    }, []);
 
     return (
         <div
+            ref={iconRef}
             className={cx(
-                'relative grid place-items-center rounded-full border border-stone-100/18 bg-black/58 shadow-[0_8px_18px_rgba(0,0,0,0.44)]',
+                'group pointer-events-none relative grid place-items-start overflow-visible focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-100',
                 compact
                     ? 'h-9 w-9'
                     : 'h-[var(--mage-wars-hud-icon-size,3.75rem)] w-[var(--mage-wars-hud-icon-size,3.75rem)]',
             )}
             data-testid="mage-wars-mage-hud-stat-icon"
+            data-hud-icon-frame="none"
+            data-hud-icon-tooltip-trigger="hover-focus"
+            data-hud-hit-surface="visual-pass-through"
             data-stat={stat}
             data-stat-value={value}
             data-stat-max={max}
             data-fill-percent={fillPercent.toFixed(2)}
-            title={`${label}: ${value}/${max}`}
-            aria-label={`${label}: ${value}/${max}`}
+            title={tooltipText}
+            aria-label={tooltipText}
+            aria-describedby={tooltipId}
+            role="img"
+            tabIndex={0}
         >
             <MageHudStatGlyph
                 stat={stat}
                 className={cx(
-                    'absolute inset-[13%] h-[74%] w-[74%] text-stone-500/62 drop-shadow-[0_2px_5px_rgba(0,0,0,0.52)]',
-                    compact && 'inset-[16%] h-[68%] w-[68%]',
+                    'absolute inset-0 h-full w-full text-stone-500/64 drop-shadow-[0_2px_5px_rgba(0,0,0,0.52)]',
+                    compact && 'text-stone-500/66',
                 )}
             />
             <span
-                className="pointer-events-none absolute inset-[13%] overflow-hidden"
+                className="pointer-events-none absolute inset-0 overflow-hidden"
                 style={{ clipPath: `inset(${clipTopPercent}% 0 0 0)` }}
                 data-testid="mage-wars-mage-hud-stat-icon-fill"
                 data-stat={stat}
@@ -1023,47 +805,32 @@ function MageHudStatIcon({
             </span>
             <span
                 className={cx(
-                    'pointer-events-none absolute inset-0 grid place-items-center rounded-full bg-black/18 font-black leading-none text-white tabular-nums drop-shadow-[0_2px_4px_rgba(0,0,0,0.86)]',
+                    'pointer-events-none absolute inset-0 grid place-items-center font-black leading-none text-white tabular-nums drop-shadow-[0_2px_4px_rgba(0,0,0,0.92)]',
                     compact ? 'text-[0.86rem]' : 'text-[1.26rem]',
                 )}
+                style={{
+                    WebkitTextStroke: compact ? '0.65px rgba(0,0,0,0.78)' : '0.8px rgba(0,0,0,0.78)',
+                    textShadow: '0 2px 4px rgba(0,0,0,0.92), 0 0 8px rgba(0,0,0,0.82)',
+                }}
                 data-testid="mage-wars-mage-hud-stat-value"
                 data-stat={stat}
             >
                 {value}
             </span>
-        </div>
-    );
-}
-
-function MageHudTokenIcon({
-    src,
-    alt,
-    compact = false,
-    kind,
-}: {
-    src: string;
-    alt: string;
-    compact?: boolean;
-    kind: 'action' | 'quickcast';
-}) {
-    return (
-        <div
-            className={cx(
-                'grid place-items-center rounded-full border border-stone-100/18 bg-black/48 shadow-[0_8px_18px_rgba(0,0,0,0.44)]',
-                compact
-                    ? 'h-9 w-9'
-                    : 'h-[var(--mage-wars-hud-icon-size,3.75rem)] w-[var(--mage-wars-hud-icon-size,3.75rem)]',
-            )}
-            data-testid="mage-wars-mage-hud-token-icon"
-            data-token-kind={kind}
-            title={alt}
-            aria-label={alt}
-        >
-            <TokenImage
-                src={src}
-                alt={alt}
-                className={compact ? 'h-6 w-6' : 'h-[82%] w-[82%]'}
-            />
+            <span
+                id={tooltipId}
+                className={cx(
+                    'pointer-events-none absolute top-1/2 z-30 -translate-y-1/2 whitespace-nowrap rounded-md border border-amber-100/25 bg-stone-950/94 px-2 py-1 text-[0.72rem] font-bold leading-none text-amber-50 shadow-[0_8px_18px_rgba(0,0,0,0.56)] transition-opacity duration-150 group-focus-visible:opacity-100',
+                    pointerHovering ? 'opacity-100' : 'opacity-0',
+                    tooltipSide === 'right'
+                        ? 'left-full ml-2 text-left'
+                        : 'right-full mr-2 text-right',
+                )}
+                data-testid="mage-wars-mage-hud-icon-tooltip"
+                data-tooltip-owner={stat}
+            >
+                {tooltipText}
+            </span>
         </div>
     );
 }
@@ -1072,10 +839,12 @@ function MageHudIconRail({
     player,
     visualDamage = player.damage,
     compact = false,
+    tooltipSide = 'right',
 }: {
     player: MageWarsPlayerState;
     visualDamage?: number;
     compact?: boolean;
+    tooltipSide?: MageHudIconTooltipSide;
 }) {
     const { t } = useTranslation('game-mage-wars');
     const lifeRemaining = Math.max(0, player.life - visualDamage);
@@ -1083,10 +852,11 @@ function MageHudIconRail({
     return (
         <div
             className={cx(
-                'pointer-events-none flex flex-col items-center justify-start',
+                'pointer-events-none flex flex-col items-start justify-start',
                 compact ? 'gap-1.5' : 'gap-[var(--mage-wars-hud-icon-gap,0.28rem)]',
             )}
             data-testid="mage-wars-mage-hud-icon-rail"
+            data-hud-icon-rail-align="left"
         >
             <MageHudStatIcon
                 stat="life"
@@ -1095,6 +865,7 @@ function MageHudIconRail({
                 max={player.life}
                 activeClassName="text-rose-300"
                 compact={compact}
+                tooltipSide={tooltipSide}
             />
             <MageHudStatIcon
                 stat="mana"
@@ -1103,6 +874,7 @@ function MageHudIconRail({
                 max={MAGE_WARS_HUD_MANA_PROGRESS_MAX}
                 activeClassName="text-cyan-200"
                 compact={compact}
+                tooltipSide={tooltipSide}
             />
             <MageHudStatIcon
                 stat="channeling"
@@ -1111,18 +883,7 @@ function MageHudIconRail({
                 max={MAGE_WARS_HUD_CHANNELING_PROGRESS_MAX}
                 activeClassName="text-amber-100"
                 compact={compact}
-            />
-            <MageHudTokenIcon
-                kind="action"
-                src={player.actionReady ? TOKEN_IMAGES.actionReady : TOKEN_IMAGES.actionSpent}
-                alt={t(player.actionReady ? 'tokens.actionReady' : 'tokens.actionSpent')}
-                compact={compact}
-            />
-            <MageHudTokenIcon
-                kind="quickcast"
-                src={player.quickcastReady ? TOKEN_IMAGES.quickcastReady : TOKEN_IMAGES.quickcastSpent}
-                alt={t(player.quickcastReady ? 'tokens.quickcastReady' : 'tokens.quickcastSpent')}
-                compact={compact}
+                tooltipSide={tooltipSide}
             />
         </div>
     );
@@ -1162,40 +923,21 @@ function MageHud({
         height: `${MAGE_WARS_HUD_COMPACT_HINT_CARD_HEIGHT_REM}rem`,
         width: `${(MAGE_WARS_HUD_COMPACT_HINT_CARD_HEIGHT_REM * mageHintCardAspectRatio).toFixed(3)}rem`,
     };
-    const handleHintCardClick = (event: ReactMouseEvent<HTMLDivElement>) => {
-        if (!onInspect) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onInspect();
-    };
-    const handleHintCardKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
-        if (!onInspect || (event.key !== 'Enter' && event.key !== ' ')) return;
-        event.preventDefault();
-        event.stopPropagation();
-        onInspect();
-    };
-
     if (!compact) {
         const hintCard = (
             <div
-                className={cx(
-                    'relative flex-none rounded-[0.2rem]',
-                    onInspect && 'pointer-events-auto cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-100',
-                )}
+                className="pointer-events-none relative flex-none rounded-[0.2rem]"
                 style={fullHintCardStyle}
                 data-testid="mage-wars-mage-hud-hint-card"
                 data-mage-preview-kind="card"
                 data-mage-ui-role="player-hint-card"
-                role={onInspect ? 'button' : undefined}
-                tabIndex={onInspect ? 0 : undefined}
-                onClick={handleHintCardClick}
-                onKeyDown={handleHintCardKeyDown}
-                aria-label={onInspect ? t('ui.inspectCardAria', { name: mageLabel }) : undefined}
-                title={onInspect ? t('ui.inspectCardTitle') : mageLabel}
+                data-hud-hit-surface="visual-pass-through"
+                aria-label={mageLabel}
+                title={mageLabel}
             >
                 <CardPreview
                     previewRef={getMageWarsMagePreviewRef(player.mageId, 'card')}
-                    className="h-full w-full rounded-[0.2rem] shadow-[0_12px_28px_rgba(0,0,0,0.52)]"
+                    className="pointer-events-none h-full w-full rounded-[0.2rem] shadow-[0_12px_28px_rgba(0,0,0,0.52)]"
                     title={mageLabel}
                     alt={mageLabel}
                 />
@@ -1217,11 +959,7 @@ function MageHud({
                         className="absolute bottom-2 left-2 z-10 inline-flex items-center gap-1.5 rounded-full bg-black/72 px-2 py-1 text-[0.68rem] font-black leading-none text-amber-100 shadow-[0_6px_16px_rgba(0,0,0,0.46)]"
                         data-testid="mage-wars-mage-hud-current-badge"
                     >
-                        <TokenImage
-                            src={player.actionReady ? TOKEN_IMAGES.actionReady : TOKEN_IMAGES.actionSpent}
-                            alt={t(player.actionReady ? 'tokens.actionReady' : 'tokens.actionSpent')}
-                            className="h-5 w-5"
-                        />
+                        <span className="h-1.5 w-1.5 rounded-full bg-amber-200 shadow-[0_0_8px_rgba(252,211,77,0.7)]" aria-hidden="true" />
                         {t('player.active')}
                     </div>
                 ) : null}
@@ -1239,13 +977,13 @@ function MageHud({
                 ) : null}
             </div>
         );
-        const iconRail = <MageHudIconRail player={player} visualDamage={visualDamage} />;
+        const iconRail = <MageHudIconRail player={player} visualDamage={visualDamage} tooltipSide={self ? 'right' : 'left'} />;
 
         return (
             <section
                 className={cx(
-                    'pointer-events-none relative flex items-start gap-[var(--mage-wars-hud-icon-rail-gap,0.38rem)] text-stone-100',
-                    self ? 'justify-start text-left' : 'justify-end text-right',
+                    'pointer-events-none relative flex items-start gap-[var(--mage-wars-hud-icon-rail-gap,0.38rem)] text-left text-stone-100',
+                    self ? 'justify-start' : 'justify-end',
                 )}
                 style={{
                     width: 'max-content',
@@ -1276,24 +1014,18 @@ function MageHud({
             aria-label={`${self ? t('player.you') : t('player.opponent')} ${mageLabel}`}
         >
             <div
-                className={cx(
-                    'relative flex-none rounded-[0.2rem]',
-                    onInspect && 'pointer-events-auto cursor-zoom-in focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-100',
-                )}
+                className="pointer-events-none relative flex-none rounded-[0.2rem]"
                 style={compactHintCardStyle}
                 data-testid="mage-wars-mage-hud-hint-card"
                 data-mage-preview-kind="card"
                 data-mage-ui-role="player-hint-card"
-                role={onInspect ? 'button' : undefined}
-                tabIndex={onInspect ? 0 : undefined}
-                onClick={handleHintCardClick}
-                onKeyDown={handleHintCardKeyDown}
-                aria-label={onInspect ? t('ui.inspectCardAria', { name: mageLabel }) : undefined}
-                title={onInspect ? t('ui.inspectCardTitle') : mageLabel}
+                data-hud-hit-surface="visual-pass-through"
+                aria-label={mageLabel}
+                title={mageLabel}
             >
                 <CardPreview
                     previewRef={getMageWarsMagePreviewRef(player.mageId, 'card')}
-                    className="h-full w-full rounded-[0.2rem] shadow-[0_8px_22px_rgba(0,0,0,0.48)]"
+                    className="pointer-events-none h-full w-full rounded-[0.2rem] shadow-[0_8px_22px_rgba(0,0,0,0.48)]"
                     title={mageLabel}
                     alt={mageLabel}
                 />
@@ -1315,11 +1047,7 @@ function MageHud({
                         className="absolute bottom-1 left-1 z-10 inline-flex items-center gap-1 rounded-full bg-black/72 px-1.5 py-0.5 text-[0.54rem] font-black leading-none text-amber-100 shadow-[0_4px_12px_rgba(0,0,0,0.42)]"
                         data-testid="mage-wars-mage-hud-current-badge"
                     >
-                        <TokenImage
-                            src={player.actionReady ? TOKEN_IMAGES.actionReady : TOKEN_IMAGES.actionSpent}
-                            alt={t(player.actionReady ? 'tokens.actionReady' : 'tokens.actionSpent')}
-                            className="h-4 w-4"
-                        />
+                        <span className="h-1 w-1 rounded-full bg-amber-200 shadow-[0_0_6px_rgba(252,211,77,0.68)]" aria-hidden="true" />
                         {t('player.active')}
                     </div>
                 ) : null}
@@ -1336,7 +1064,7 @@ function MageHud({
                     />
                 ) : null}
             </div>
-            <MageHudIconRail player={player} visualDamage={visualDamage} compact />
+            <MageHudIconRail player={player} visualDamage={visualDamage} compact tooltipSide={self ? 'right' : 'left'} />
         </section>
     );
 }
@@ -1583,7 +1311,6 @@ function ZoneFieldCard({
                 : ZONE_LOOSE_ENTITY_HEIGHT_CLASS;
     const cardAspectRatio = getMageWarsSpellCardAspectRatio(cardId) ?? SPELL_CARD_BACK_ASPECT_RATIO;
     const cardSizeStyle: CSSProperties = { aspectRatio: cardAspectRatio };
-    const isSpentCreature = object?.kind === 'creature' && object.actionReady === false;
     const life = visualLife ?? object?.life ?? 0;
     const damage = visualDamage ?? 0;
 
@@ -1621,6 +1348,7 @@ function ZoneFieldCard({
             {object ? (
                 <EntityStatusTokenRail
                     guarding={object.guarding}
+                    actionReady={object.kind === 'creature' ? object.actionReady : undefined}
                     statusTokens={object.statusTokens}
                     compact={compact}
                 />
@@ -1647,7 +1375,6 @@ function ZoneFieldCard({
             type="button"
             className={cx(
                 'group relative block h-full w-full rounded-[0.18rem] text-left shadow-[0_14px_30px_rgba(0,0,0,0.48)] transition-[filter,box-shadow,opacity] duration-150',
-                isSpentCreature && 'grayscale opacity-55 brightness-75 saturate-50',
                 compact && 'shadow-[0_8px_16px_rgba(0,0,0,0.42)]',
                 role === 'target' && 'shadow-[0_0_32px_rgba(16,185,129,0.46)]',
                 role === 'source' && '-translate-y-2 shadow-[0_0_36px_rgba(34,211,238,0.62)]',
@@ -1673,9 +1400,10 @@ function ZoneFieldCard({
             data-visual-damage={visualDamage ?? 0}
             data-visual-held={visualHeld ? 'true' : undefined}
             data-action-ready={object ? String(object.actionReady) : undefined}
-            data-visual-action-state={isSpentCreature ? 'spent' : undefined}
+            data-action-token-state={object?.kind === 'creature' ? (object.actionReady ? 'ready' : 'spent') : undefined}
             data-browse-inspectable={onInspect ? 'true' : undefined}
             data-secondary-inspect={hasSecondaryInspect ? 'true' : undefined}
+            data-primary-action={onClick ? 'true' : undefined}
         >
             {object ? (
                 <span
@@ -1837,12 +1565,7 @@ function ArenaAttachmentStrip({
     hostKind,
     ownerSide,
     selectedObjectId,
-    selectedObjectAvailableAbilities = [],
-    canGuardSelectedActor = false,
     shouldShowSelectedAbilityActionDock = false,
-    onGuard,
-    onObjectAbilitySelect,
-    onMageAbilitySelect,
     getRole,
     getOnClick,
     getOnInspect,
@@ -1853,12 +1576,7 @@ function ArenaAttachmentStrip({
     hostKind: 'mage' | 'object' | 'zone';
     ownerSide?: SeatOwnerSide;
     selectedObjectId?: string | null;
-    selectedObjectAvailableAbilities?: readonly { id: MageWarsObjectAbilityId; name: string }[];
-    canGuardSelectedActor?: boolean;
     shouldShowSelectedAbilityActionDock?: boolean;
-    onGuard?: () => void;
-    onObjectAbilitySelect?: (sourceObjectId: string, abilityId: MageWarsObjectAbilityId) => void;
-    onMageAbilitySelect?: (playerId: PlayerId, abilityId: MageWarsMageAbilityId) => void;
     getRole: (object: MageWarsArenaObjectState) => FieldCardRole | undefined;
     getOnClick: (object: MageWarsArenaObjectState) => (() => void) | undefined;
     getOnInspect?: (object: MageWarsArenaObjectState) => (() => void) | undefined;
@@ -2120,15 +1838,15 @@ function SpellbookShelf({
         >
             <span className="sr-only">{t('privateZones.spellbook')}</span>
             <div
-                className="flex h-[9.875rem] shrink-0 flex-col justify-end gap-1.5"
-                style={{ width: 'var(--mage-wars-spellbook-control-width, 3.625rem)' }}
+                className="flex h-[var(--mage-wars-spellbook-category-stack-height,13.25rem)] shrink-0 flex-col justify-end gap-[0.25rem]"
+                style={{ width: 'var(--mage-wars-spellbook-control-width, 5rem)' }}
             >
                 {categories.map(({ id, label }) => (
                     <button
                         key={id}
                         type="button"
                         className={cx(
-                            'min-h-[1.55rem] rounded-[0.22rem] px-1.5 text-[0.66rem] font-semibold transition',
+                            'min-h-[2rem] whitespace-nowrap rounded-[0.28rem] px-2.5 text-[0.78rem] font-bold leading-none transition',
                             category === id
                                 ? 'bg-amber-200/85 text-stone-950 shadow-[0_6px_14px_rgba(0,0,0,0.25)]'
                                 : 'bg-black/26 text-stone-200 hover:bg-black/38',
@@ -2384,6 +2102,7 @@ function TurnStatusDock({
 function ZoneOccupant({
     player,
     role,
+    ownerSide,
     crowded,
     density = 'solo',
     onClick,
@@ -2393,6 +2112,7 @@ function ZoneOccupant({
 }: {
     player: MageWarsPlayerState;
     role?: 'source' | 'target';
+    ownerSide?: SeatOwnerSide;
     crowded?: boolean;
     density?: ZoneEntityDensity;
     onClick?: () => void;
@@ -2446,9 +2166,15 @@ function ZoneOccupant({
             data-tutorial-id={`mw-mage-entity-${player.id}`}
             data-player-id={player.id}
             data-mage-id={player.mageId}
+            data-owner-side={ownerSide}
             data-mage-preview-kind="portrait"
             data-mage-ui-role="mage-battle-entity"
             data-mage-role={role}
+            data-action-ready={String(player.actionReady)}
+            data-action-token-state={player.actionReady ? 'ready' : 'spent'}
+            data-quickcast-ready={String(player.quickcastReady)}
+            data-quickcast-token-state={player.quickcastReady ? 'ready' : 'spent'}
+            data-primary-action={onClick ? 'true' : undefined}
         >
             <CardPreview
                 previewRef={getMageWarsMagePreviewRef(player.mageId, 'portrait')}
@@ -2481,6 +2207,8 @@ function ZoneOccupant({
             />
             <EntityStatusTokenRail
                 guarding={player.guarding}
+                actionReady={player.actionReady}
+                quickcastReady={player.quickcastReady}
                 statusTokens={player.statusTokens}
             />
         </div>
@@ -2981,12 +2709,7 @@ function ArenaStage({
                                 hostKind="object"
                                 ownerSide={resolveSeatOwnerSide(core, object.ownerId)}
                                 selectedObjectId={selectedObjectId}
-                                selectedObjectAvailableAbilities={selectedObjectAvailableAbilities}
-                                canGuardSelectedActor={canGuardSelectedActor}
                                 shouldShowSelectedAbilityActionDock={shouldShowSelectedAbilityActionDock}
-                                onGuard={onGuard}
-                                onObjectAbilitySelect={onObjectAbilitySelect}
-                                onMageAbilitySelect={onMageAbilitySelect}
                                 getRole={resolveAttachmentRole}
                                 getOnClick={resolveAttachmentClick}
                                 getOnInspect={resolveAttachmentInspect}
@@ -3050,6 +2773,7 @@ function ArenaStage({
                                 <ZoneOccupant
                                     player={occupant}
                                     role={role}
+                                    ownerSide={resolveSeatOwnerSide(core, occupant.id)}
                                     crowded={hasFieldCards || mageAttachments.length > 0}
                                     density={density}
                                     visualDamage={getVisualPlayerDamage(occupant)}
@@ -3061,11 +2785,11 @@ function ArenaStage({
                                             entityRef: occupant.id,
                                         })(element);
                                     }}
-                                        onClick={occupant.id === legalAttackTargetId || spellNeedsObjectTarget
-                                            ? () => onPlayerSelect?.(occupant.id)
-                                            : canSelectMageActor
-                                                ? () => onActorPlayerSelect?.(occupant.id)
-                                                : undefined}
+                                    onClick={occupant.id === legalAttackTargetId || spellNeedsObjectTarget
+                                        ? () => onPlayerSelect?.(occupant.id)
+                                        : canSelectMageActor
+                                            ? () => onActorPlayerSelect?.(occupant.id)
+                                            : undefined}
                                 />
                             </div>
                             <ArenaAttachmentStrip
@@ -3074,12 +2798,7 @@ function ArenaStage({
                                 hostKind="mage"
                                 ownerSide={resolveSeatOwnerSide(core, occupant.id)}
                                 selectedObjectId={selectedObjectId}
-                                selectedObjectAvailableAbilities={selectedObjectAvailableAbilities}
-                                canGuardSelectedActor={canGuardSelectedActor}
                                 shouldShowSelectedAbilityActionDock={shouldShowSelectedAbilityActionDock}
-                                onGuard={onGuard}
-                                onObjectAbilitySelect={onObjectAbilitySelect}
-                                onMageAbilitySelect={onMageAbilitySelect}
                                 getRole={resolveAttachmentRole}
                                 getOnClick={resolveAttachmentClick}
                                 getOnInspect={resolveAttachmentInspect}
@@ -3219,12 +2938,7 @@ function ArenaStage({
                             hostKind="zone"
                             ownerSide="neutral"
                             selectedObjectId={selectedObjectId}
-                            selectedObjectAvailableAbilities={selectedObjectAvailableAbilities}
-                            canGuardSelectedActor={canGuardSelectedActor}
                             shouldShowSelectedAbilityActionDock={shouldShowSelectedAbilityActionDock}
-                            onGuard={onGuard}
-                            onObjectAbilitySelect={onObjectAbilitySelect}
-                            onMageAbilitySelect={onMageAbilitySelect}
                             getRole={resolveAttachmentRole}
                             getOnClick={resolveAttachmentClick}
                             getOnInspect={resolveAttachmentInspect}
@@ -3485,159 +3199,6 @@ function MageSpellCastChoiceDock({
             </section>
         </aside>
     );
-}
-
-function MageWarsSelectedAbilityActionDock({
-    objectId,
-    objectAbilities,
-    magePlayerId,
-    mageAbility,
-    canGuard,
-    onGuard,
-    onObjectAbilitySelect,
-    onMageAbilitySelect,
-}: {
-    objectId?: string;
-    objectAbilities?: readonly { id: MageWarsObjectAbilityId; name: string }[];
-    magePlayerId?: PlayerId;
-    mageAbility?: { abilityId: MageWarsMageAbilityId; name: string };
-    canGuard: boolean;
-    onGuard: () => void;
-    onObjectAbilitySelect: (sourceObjectId: string, abilityId: MageWarsObjectAbilityId) => void;
-    onMageAbilitySelect: (playerId: PlayerId, abilityId: MageWarsMageAbilityId) => void;
-}) {
-    const { t } = useTranslation('game-mage-wars');
-    const availableObjectAbilities = objectAbilities ?? [];
-
-    const sourceKey = objectId != null
-        ? `object:${objectId}`
-        : magePlayerId != null
-            ? `mage:${magePlayerId}`
-            : null;
-    const [dockPosition, setDockPosition] = useState<{ left: number; top: number } | null>(null);
-
-    useLayoutEffect(() => {
-        if (!sourceKey || typeof document === 'undefined') return undefined;
-
-        const findSource = (): HTMLElement | undefined => {
-            const [sourceKind, sourceId] = sourceKey.split(':');
-            if (sourceKind === 'object' && sourceId) {
-                const candidates = [
-                    ...document.querySelectorAll<HTMLElement>('[data-testid="mage-wars-zone-field-card"]'),
-                    ...document.querySelectorAll<HTMLElement>('[data-testid="mage-wars-attached-card"]'),
-                ];
-                const entityCard = candidates.find((element) => element.dataset.objectId === sourceId);
-                if (entityCard) return entityCard;
-            }
-            if (sourceKind === 'mage' && sourceId) {
-                const entity = document.querySelector<HTMLElement>(
-                    `[data-testid="mage-wars-zone-mage-entity"][data-player-id="${sourceId}"]`,
-                );
-                if (entity) return entity;
-            }
-            return Array.from(
-                document.querySelectorAll<HTMLElement>('[data-mage-wars-ability-source]'),
-            ).find((element) => element.dataset.mageWarsAbilitySource === sourceKey);
-        };
-        const measure = () => {
-            const source = findSource();
-            if (!source) return;
-            const rect = source.getBoundingClientRect();
-            const next = { left: rect.left + rect.width / 2, top: rect.bottom + 8 };
-            setDockPosition((current) => (
-                current
-                && Math.abs(current.left - next.left) < 0.5
-                && Math.abs(current.top - next.top) < 0.5
-                    ? current
-                    : next
-            ));
-        };
-
-        measure();
-        let frameId: number | null = null;
-        const tick = () => {
-            measure();
-            frameId = window.requestAnimationFrame(tick);
-        };
-        frameId = window.requestAnimationFrame(tick);
-        window.addEventListener('resize', measure);
-        window.addEventListener('orientationchange', measure);
-
-        return () => {
-            if (frameId != null) window.cancelAnimationFrame(frameId);
-            window.removeEventListener('resize', measure);
-            window.removeEventListener('orientationchange', measure);
-        };
-    }, [sourceKey]);
-
-    if (availableObjectAbilities.length === 0 && !mageAbility && !canGuard) return null;
-    if (!dockPosition || typeof document === 'undefined') return null;
-
-    const dock = (
-        <aside
-            className="pointer-events-none fixed z-[10000] flex -translate-x-1/2 justify-center"
-            style={{ left: dockPosition.left, top: dockPosition.top, transform: 'translateX(-50%)' }}
-            data-testid="mage-wars-selected-ability-action-dock"
-            data-tutorial-id="mw-ability-action-dock"
-            data-ability-action-placement="source-card-below"
-            data-ability-source-key={sourceKey}
-        >
-            <section className="pointer-events-auto flex max-w-[min(38rem,calc(100vw-2rem))] flex-wrap items-center justify-center gap-2 rounded-[0.35rem] border border-amber-100/18 bg-stone-950/90 px-3 py-2.5 shadow-[0_16px_38px_rgba(0,0,0,0.52)]">
-                    {canGuard ? (
-                        <button
-                            type="button"
-                            className="min-h-9 rounded-[0.25rem] border border-emerald-100/30 bg-emerald-200 px-3 py-1.5 text-xs font-black text-stone-950 shadow-[0_8px_18px_rgba(0,0,0,0.36)] transition hover:bg-emerald-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-100"
-                            aria-label={t('actions.guardCreature')}
-                            title={t('actions.guardCreature')}
-                            data-testid="mage-wars-selected-unit-guard"
-                            data-tutorial-id="mw-selected-unit-guard"
-                            data-action-kind="guard"
-                            data-action-visual="text-action"
-                            data-action-placement="source-card-below"
-                            onClick={onGuard}
-                        >
-                            {t('actions.guardCreature')}
-                        </button>
-                    ) : null}
-                    {objectId ? availableObjectAbilities.map((ability) => (
-                        <button
-                            key={ability.id}
-                            type="button"
-                            className="min-h-9 rounded-[0.25rem] border border-amber-100/28 bg-amber-200 px-3 py-1.5 text-xs font-black text-stone-950 shadow-[0_8px_18px_rgba(0,0,0,0.36)] transition hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-100"
-                            aria-label={ability.name}
-                            title={ability.name}
-                            data-testid={getMageWarsObjectAbilityButtonTestId(ability.id)}
-                            data-tutorial-id={ability.id === MAGE_WARS_OBJECT_ABILITY_IDS.ASYRAN_CLERIC_HEALING_LIGHT
-                                ? 'mw-ability-healing-light'
-                                : `mw-object-ability-${ability.id.replace(/[^a-z0-9]+/gi, '-')}`}
-                            data-ability-id={ability.id}
-                            data-ability-visual="text-action"
-                            data-ability-action-placement="source-card-below"
-                            onClick={() => onObjectAbilitySelect(objectId, ability.id)}
-                        >
-                            {ability.name}
-                        </button>
-                    )) : null}
-                    {magePlayerId && mageAbility ? (
-                        <button
-                            type="button"
-                            className="min-h-9 rounded-[0.25rem] border border-cyan-100/32 bg-cyan-200 px-3 py-1.5 text-xs font-black text-stone-950 shadow-[0_8px_18px_rgba(0,0,0,0.36)] transition hover:bg-cyan-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-cyan-100"
-                            aria-label={mageAbility.name}
-                            title={mageAbility.name}
-                            data-testid="mage-wars-selected-mage-ability-restore"
-                            data-tutorial-id="mw-ability-restore"
-                            data-ability-visual="text-action"
-                            data-ability-action-placement="source-card-below"
-                            onClick={() => onMageAbilitySelect(magePlayerId, mageAbility.abilityId)}
-                        >
-                            {mageAbility.name}
-                        </button>
-                    ) : null}
-            </section>
-        </aside>
-    );
-
-    return createPortal(dock, document.body);
 }
 
 function MageObjectAbilityChoiceDock({
@@ -3906,79 +3467,17 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
         isMultiplayer,
     });
     const readyPlayerIds = core.phaseReadyPlayerIds ?? [];
-    const tutorialPlayerSyncKey = core.playerOrder.map((id) => {
-        const player = core.players[id];
-        if (!player) return `${id}:missing`;
-        const statusKey = Object.entries(player.statusTokens ?? {})
-            .sort(([left], [right]) => left.localeCompare(right))
-            .map(([statusId, count]) => `${statusId}:${count}`)
-            .join(',');
-        return [
-            id,
-            player.mageId,
-            player.mageZoneId,
-            player.mana,
-            player.damage,
-            player.actionReady ? 1 : 0,
-            player.quickcastReady ? 1 : 0,
-            player.guarding ? 1 : 0,
-            player.preparedSpellSlots,
-            player.preparedSpellCardIds.join(','),
-            player.discardSpellCardIds.join(','),
-            statusKey,
-        ].join(':');
-    }).join(';');
-    const tutorialObjectSyncKey = Object.values(core.objects ?? {})
-        .map((object) => {
-            const statusKey = Object.entries(object.statusTokens ?? {})
-                .sort(([left], [right]) => left.localeCompare(right))
-                .map(([statusId, count]) => `${statusId}:${count}`)
-                .join(',');
-            return [
-                object.id,
-                object.ownerId,
-                object.sourceSpellCardId,
-                object.zoneId,
-                object.damage,
-                object.actionReady ? 1 : 0,
-                object.guarding ? 1 : 0,
-                statusKey,
-            ].join(':');
-        })
-        .sort()
-        .join(';');
-    const tutorialWallSyncKey = Object.values(core.walls ?? {})
-        .map((wall) => [
-            wall.id,
-            wall.ownerId,
-            wall.sourceSpellCardId,
-            wall.edgeId,
-            wall.blocksLineOfSight ? 1 : 0,
-        ].join(':'))
-        .sort()
-        .join(';');
-    const tutorialRuntimeSyncKey = [
+    const tutorialRuntimeSyncKey = buildMageWarsTutorialRuntimeSyncKey({
+        core,
         phase,
-        core.currentPlayerId,
         phaseActorId,
-        core.turnNumber,
-        readyPlayerIds.join(','),
-        tutorialPlayerSyncKey,
-        tutorialObjectSyncKey,
-        tutorialWallSyncKey,
-        G.sys.eventStream?.nextId ?? 0,
-        G.sys.decisionEpoch ?? 0,
-        G.sys.interaction?.current?.id ?? '',
-        G.sys.responseWindow?.current?.id ?? '',
-        G.sys.responseWindow?.current?.currentResponderIndex ?? '',
-    ].join('|');
+        sys: G.sys,
+    });
     useTutorialBridge(G.sys.tutorial, dispatch, tutorialRuntimeSyncKey);
-    useLayoutEffect(() => {
-        setPublicViewTargetPlayerId((current) => (
-            current && current !== viewingPlayerId && core.players[current] ? current : null
-        ));
-    }, [core.players, viewingPlayerId]);
     const { isActive: isTutorialActive, currentStep: tutorialStep, nextStep } = useTutorial();
+    const boardTutorialStep = G.sys.tutorial.step ?? G.sys.tutorial.steps[G.sys.tutorial.stepIndex] ?? tutorialStep;
+    const boardTutorialActive = isTutorialActive || G.sys.tutorial.active;
+    const boardTutorialHighlightTarget = boardTutorialActive ? boardTutorialStep?.highlightTarget : undefined;
     const isCommandAllowed = (commandType: string) => {
         if (!isTutorialActive || !tutorialStep) return true;
         if (tutorialStep.allowedCommands) return tutorialStep.allowedCommands.includes(commandType);
@@ -4304,13 +3803,8 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
     const selectedSpellCastCurrentChainSubmitObjectId = selectedSpellCastCurrentChainSelection
         ? pendingSpellChainPathObjectIds[pendingSpellChainPathObjectIds.length - 1]
         : undefined;
-    const pendingObjectAbilityTargetKey = buildSortedStringKey(pendingObjectAbilityTargetIds);
-    const pendingMageAbilityTargetKey = buildSortedStringKey(pendingMageAbilityTargetIds);
-    const selectedSpellCastTargetKey = buildSortedStringKey(selectedSpellCastTargetIds);
-    const selectedSpellCastNewTargetObjectKey = buildSortedStringKey(selectedSpellCastNewTargetObjectIds);
-    const selectedSpellCastNextChainTargetKey = buildSortedStringKey(selectedSpellCastNextChainTargetObjectIds);
-    const tutorialLaneScrollTargetKey = useMemo(() => {
-        if (!isTutorialActive) return '';
+    const tutorialLaneScrollTargetKey = (() => {
+        if (!boardTutorialActive) return '';
         const arenaObjectTargetIds = new Set<string>();
         const addArenaObjectTarget = (objectId: string) => {
             arenaObjectTargetIds.add(`mw-arena-object-${objectId}`);
@@ -4333,21 +3827,14 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
             return Array.from(arenaObjectTargetIds).sort().join('|');
         }
         const targetIds = new Set<string>();
-        if (tutorialStep?.highlightTarget) targetIds.add(tutorialStep.highlightTarget);
+        if (boardTutorialHighlightTarget) targetIds.add(boardTutorialHighlightTarget);
         return Array.from(targetIds).sort().join('|');
-    }, [
-        isTutorialActive,
-        pendingMageAbility,
-        pendingMageAbilityTargetKey,
-        pendingObjectAbility,
-        pendingObjectAbilityTargetKey,
-        selectedSpellCardId,
-        selectedSpellCastCurrentChainSubmitObjectId,
-        selectedSpellCastNewTargetObjectKey,
-        selectedSpellCastNextChainTargetKey,
-        selectedSpellCastTargetKey,
-        tutorialStep?.highlightTarget,
-    ]);
+    })();
+    const tutorialArenaPanTarget = useMemo(() => (
+        boardTutorialActive
+            ? resolveMageWarsTutorialArenaPanTarget(boardTutorialHighlightTarget)
+            : null
+    ), [boardTutorialActive, boardTutorialHighlightTarget]);
     useLayoutEffect(() => {
         if (!tutorialLaneScrollTargetKey || typeof document === 'undefined' || typeof window === 'undefined') {
             return undefined;
@@ -4927,7 +4414,7 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
         : {
             inset: 0,
             '--mage-wars-desktop-hud-width': 'clamp(18.25rem, 17vw, 21.5rem)',
-            '--mage-wars-desktop-self-hud-left': 'calc(var(--mage-wars-desktop-side-inset, 1rem) + 25vw)',
+            '--mage-wars-desktop-self-hud-left': 'var(--mage-wars-desktop-side-inset, 1rem)',
             '--mage-wars-desktop-hud-hint-card-height': 'clamp(15.75rem, 22vh, 18.75rem)',
             '--mage-wars-hud-icon-size': 'clamp(3.75rem, 5vh, 4.25rem)',
             '--mage-wars-hud-icon-gap': 'clamp(0.16rem, 0.22vh, 0.3rem)',
@@ -4942,7 +4429,7 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
             '--mage-wars-desktop-grid-gap': 'clamp(0.375rem, 0.45vw, 0.75rem)',
             '--mage-wars-desktop-section-gap': 'clamp(0.5rem, calc(1.805vw - 1.041rem), 1.125rem)',
             '--mage-wars-desktop-card-gap': 'clamp(0.375rem, calc(1.083vw - 0.551rem), 0.75rem)',
-            '--mage-wars-spellbook-control-width': 'clamp(2.5rem, 3vw, 3.625rem)',
+            '--mage-wars-spellbook-control-width': 'clamp(4.75rem, 4.7vw, 5.5rem)',
             '--mage-wars-spellbook-page-rail-width': 'clamp(2.25rem, 2.5vw, 3rem)',
             '--mage-wars-spellbook-page-button-size': 'clamp(2.25rem, 2.1vw, 2.5rem)',
             '--mage-wars-prepared-card-gap': 'clamp(0.25rem, calc(1.083vw - 0.8rem), 0.875rem)',
@@ -4982,6 +4469,7 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
                     baseScaleMode={isLandscapeMobileViewport ? 'contain' : 'cover'}
                     panBoundsMode="free"
                     fitInsets={cameraFitInsets}
+                    panToTarget={tutorialArenaPanTarget}
                     containerTestId="mage-wars-arena-viewport"
                     contentTestId="mage-wars-arena-viewport-content"
                     scaleTestId="mage-wars-arena-viewport-scale"
@@ -5047,7 +4535,7 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
                         getVisualPlayerDamage={getVisualPlayerDamage}
                         showLifeTotals={showBoardLifeTotals}
                         visualHeldObjects={mageWarsEvents.heldObjects}
-                        tutorialHighlightTarget={tutorialStep?.highlightTarget}
+                        tutorialHighlightTarget={boardTutorialHighlightTarget}
                     />
                 </ZoomPanViewport>
             </div>
@@ -5113,7 +4601,7 @@ export default function MageWarsBoard({ G, playerID, dispatch, reset, matchData,
                     bottom: `calc(${desktopBottomGap}px + var(--mage-wars-desktop-spellbook-card-height, var(--mage-wars-desktop-card-height, 14rem)) + var(--mage-wars-desktop-section-gap, 1.125rem) + 0.25rem)`,
                     width: 'var(--mage-wars-desktop-hud-width, 23.25rem)',
                 }}
-                data-layout-position="self-lower-left-arena-safe"
+                data-layout-position="self-lower-left"
             >
                 <div className="pointer-events-none">
                     {viewingPlayer ? (

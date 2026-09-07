@@ -31,7 +31,6 @@ import {
     setScenarioTestTurnMovement,
 } from '../../testing/firstScenarioTestUtils';
 import {
-    BETRAYAL_COMMANDS,
     BetrayalDomain,
     EXPLORER_CATALOG,
     createBetrayalMonsterFromDefinition,
@@ -41,6 +40,7 @@ import {
     type BetrayalCore,
     type UseEffectProfile,
 } from '../../game';
+import { BETRAYAL_COMMANDS } from '../../commands';
 import {
     canUseBookForPendingEventRoll,
     canUseHolySymbolForDiscovery,

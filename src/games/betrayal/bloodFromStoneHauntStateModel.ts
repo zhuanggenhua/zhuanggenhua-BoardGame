@@ -14,8 +14,8 @@ import { clearNextNonCombatTraitRollReplacementsForPlayer } from './possessionAc
 import type {
     BetrayalCore,
     BetrayalEndgameResult,
-    BetrayalEvent,
 } from './game';
+import type { BetrayalEvent } from './events';
 
 type BloodFromStonePeekabooResolvedEvent = Extract<BetrayalEvent, { type: 'BLOOD_FROM_STONE_PEEKABOO_RESOLVED' }>;
 type BloodFromStoneExtraStoneCherubsPlacedEvent = Extract<BetrayalEvent, { type: 'BLOOD_FROM_STONE_EXTRA_STONE_CHERUBS_PLACED' }>;
